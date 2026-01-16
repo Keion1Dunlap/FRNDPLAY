@@ -1,0 +1,15 @@
+# Node
+node_modules/
+
+# Environment files (secrets)
+.env
+server/.env
+
+# iOS secrets / local config
+ios/**/Config.swift (PRIVATE)
+ios/**/Config.swift.local
+
+# macOS / Xcode
+.DS_Store
+*.xcuserstate
+DerivedData/
