@@ -37,6 +37,8 @@ export default function RoomView() {
   const [role, setRole] = useState("GUEST");
 
   const [nowVideoId, setNowVideoId] = useState("");
+  const [nowTitle, setNowTitle] = useState("");
+  const [nowThumbnail, setNowThumbnail] = useState("");
   const [isPlaying, setIsPlaying] = useState(false);
 
   const [hostTime, setHostTime] = useState(0);
@@ -47,9 +49,6 @@ export default function RoomView() {
   const playerCtrlRef = useRef(null);
   const advancingRef = useRef(false);
   const isHostRef = useRef(false);
-
-  // Basic previous-track memory for current session
-  const previousVideoIdRef = useRef("");
   const currentVideoIdRef = useRef("");
 
   const isHost = role === "HOST";
@@ -67,7 +66,6 @@ export default function RoomView() {
     return Number.isFinite(exact) ? exact : localTime;
   };
 
-  // --- auth/session ---
   useEffect(() => {
     let alive = true;
 
@@ -89,7 +87,6 @@ export default function RoomView() {
     };
   }, []);
 
-  // --- load room by code ---
   useEffect(() => {
     let alive = true;
 
@@ -126,6 +123,8 @@ export default function RoomView() {
 
       setRoom(r);
       setNowVideoId(String(r.now_video_id || "").trim());
+      setNowTitle(String(r.now_title || "").trim());
+      setNowThumbnail(String(r.now_thumbnail || "").trim());
       setIsPlaying(!!r.now_playing);
       setHostTime(t);
       setLocalTime(t);
@@ -140,7 +139,6 @@ export default function RoomView() {
     };
   }, [roomCode]);
 
-  // --- host ownership ---
   useEffect(() => {
     if (!room?.id) return;
 
@@ -190,7 +188,6 @@ export default function RoomView() {
     };
   }, [room?.id, room?.host_user_id, session?.user?.id]);
 
-  // --- realtime room sync ---
   useEffect(() => {
     if (!room?.id) return;
 
@@ -209,11 +206,15 @@ export default function RoomView() {
           if (!next) return;
 
           const nextVideoId = String(next.now_video_id || "").trim();
+          const nextTitle = String(next.now_title || "").trim();
+          const nextThumbnail = String(next.now_thumbnail || "").trim();
           const nextPlaying = !!next.now_playing;
           const nextTime = toSafeNumber(next.now_time, 0);
 
           setRoom(next);
           setNowVideoId(nextVideoId);
+          setNowTitle(nextTitle);
+          setNowThumbnail(nextThumbnail);
           setIsPlaying(nextPlaying);
           setHostTime(nextTime);
 
@@ -244,7 +245,6 @@ export default function RoomView() {
     };
   }, [room?.id, localTime]);
 
-  // --- host heartbeat while playing only ---
   useEffect(() => {
     if (!room?.id || !isHost) return;
     if (!isValidYouTubeId(nowVideoId)) return;
@@ -260,6 +260,8 @@ export default function RoomView() {
           .from("rooms")
           .update({
             now_video_id: nowVideoId,
+            now_title: nowTitle || "",
+            now_thumbnail: nowThumbnail || "",
             now_playing: true,
             now_time: exact,
             now_updated_at: new Date().toISOString(),
@@ -271,9 +273,24 @@ export default function RoomView() {
     }, 1200);
 
     return () => clearInterval(interval);
-  }, [room?.id, isHost, nowVideoId, isPlaying]);
+  }, [room?.id, isHost, nowVideoId, nowTitle, nowThumbnail, isPlaying]);
 
-  const handleHostSetVideo = async (videoId) => {
+  const addToHistory = async ({ videoId, title, thumbnail }) => {
+    if (!room?.id || !isValidYouTubeId(videoId)) return;
+
+    try {
+      await supabase.from("playback_history").insert({
+        room_id: String(room.id),
+        video_id: String(videoId).trim(),
+        title: String(title || "").trim() || null,
+        thumbnail: String(thumbnail || "").trim() || null,
+      });
+    } catch (err) {
+      console.warn("Playback history insert failed:", err);
+    }
+  };
+
+  const handleHostSetVideo = async (videoId, meta = {}) => {
     if (!room?.id || !isHost) return;
 
     const id = String(videoId || "").trim();
@@ -282,13 +299,12 @@ export default function RoomView() {
       return;
     }
 
-    const currentId = String(currentVideoIdRef.current || "").trim();
-
-    if (isValidYouTubeId(currentId) && currentId !== id) {
-      previousVideoIdRef.current = currentId;
-    }
+    const nextTitle = String(meta?.title || "").trim();
+    const nextThumbnail = String(meta?.thumbnail || "").trim();
 
     setNowVideoId(id);
+    setNowTitle(nextTitle);
+    setNowThumbnail(nextThumbnail);
     setIsPlaying(true);
     setHostTime(0);
     setLocalTime(0);
@@ -304,11 +320,19 @@ export default function RoomView() {
       .from("rooms")
       .update({
         now_video_id: id,
+        now_title: nextTitle,
+        now_thumbnail: nextThumbnail,
         now_playing: true,
         now_time: 0,
         now_updated_at: new Date().toISOString(),
       })
       .eq("id", room.id);
+
+    await addToHistory({
+      videoId: id,
+      title: nextTitle,
+      thumbnail: nextThumbnail,
+    });
   };
 
   const handleHostPlay = async () => {
@@ -361,12 +385,11 @@ export default function RoomView() {
   };
 
   const handlePrevious = async () => {
-    if (!room?.id || !isHost || !isValidYouTubeId(nowVideoId)) return;
+    if (!room?.id || !isHost) return;
 
     const exact = getExactPlayerTime();
 
-    // If the song is already a few seconds in, restart it
-    if (exact > 3) {
+    if (isValidYouTubeId(nowVideoId) && exact > 3) {
       setLocalTime(0);
       setHostTime(0);
       setSeekTo(0);
@@ -390,16 +413,35 @@ export default function RoomView() {
       return;
     }
 
-    // Otherwise go to the previous track, if one exists in this session
-    const previousId = String(previousVideoIdRef.current || "").trim();
-    if (!isValidYouTubeId(previousId)) return;
+    try {
+      const { data, error } = await supabase
+        .from("playback_history")
+        .select("*")
+        .eq("room_id", String(room.id))
+        .order("played_at", { ascending: false })
+        .limit(10);
 
-    const currentId = String(nowVideoId || "").trim();
+      if (error) {
+        console.warn("Playback history load failed:", error);
+        return;
+      }
 
-    await handleHostSetVideo(previousId);
+      const items = data || [];
+      const currentId = String(nowVideoId || "").trim();
 
-    // Swap refs so Previous can toggle back if needed
-    previousVideoIdRef.current = currentId;
+      const previousItem = items.find(
+        (x) => String(x.video_id || "").trim() && String(x.video_id || "").trim() !== currentId
+      );
+
+      if (!previousItem?.video_id) return;
+
+      await handleHostSetVideo(previousItem.video_id, {
+        title: previousItem.title || "",
+        thumbnail: previousItem.thumbnail || "",
+      });
+    } catch (err) {
+      console.warn("Previous playback failed:", err);
+    }
   };
 
   const handleEnded = async () => {
@@ -442,11 +484,9 @@ export default function RoomView() {
       }
 
       if (!next?.video_id || !isValidYouTubeId(next.video_id)) {
-        if (isValidYouTubeId(finishedVideoId)) {
-          previousVideoIdRef.current = finishedVideoId;
-        }
-
         setNowVideoId("");
+        setNowTitle("");
+        setNowThumbnail("");
         setIsPlaying(false);
         setHostTime(0);
         setLocalTime(0);
@@ -456,6 +496,8 @@ export default function RoomView() {
           .from("rooms")
           .update({
             now_video_id: "",
+            now_title: "",
+            now_thumbnail: "",
             now_playing: false,
             now_time: 0,
             now_updated_at: new Date().toISOString(),
@@ -465,7 +507,10 @@ export default function RoomView() {
         return;
       }
 
-      await handleHostSetVideo(next.video_id);
+      await handleHostSetVideo(next.video_id, {
+        title: next.title || "",
+        thumbnail: next.thumbnail || "",
+      });
     } finally {
       advancingRef.current = false;
     }
@@ -544,7 +589,7 @@ export default function RoomView() {
 
           <div style={{ marginBottom: 10, opacity: 0.7 }}>
             {isValidYouTubeId(nowVideoId)
-              ? `${nowVideoId} • ${Math.floor((isHost ? localTime : hostTime) || 0)}s`
+              ? `${nowTitle || nowVideoId} • ${Math.floor((isHost ? localTime : hostTime) || 0)}s`
               : "No video selected"}
           </div>
 

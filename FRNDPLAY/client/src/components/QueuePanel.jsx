@@ -107,6 +107,41 @@ export default function QueuePanel({ roomId, isHost, onPlay }) {
     }
 
     let alive = true;
+    let backfilling = false;
+
+    async function backfillMissingMetadata(queueItems) {
+      if (backfilling) return;
+      backfilling = true;
+
+      try {
+        const missing = (queueItems || []).filter(
+          (item) =>
+            item?.id &&
+            isValidYouTubeId(item.video_id) &&
+            (!String(item.title || "").trim() ||
+              !String(item.thumbnail || "").trim() ||
+              String(item.title || "").trim().startsWith("YouTube Video ("))
+        );
+
+        if (missing.length === 0) return;
+
+        for (const item of missing) {
+          const meta = await getYouTubeMeta(item.video_id);
+
+          await supabase
+            .from("queue_items")
+            .update({
+              title: meta.title || cleanTitleFromId(item.video_id),
+              thumbnail: meta.thumbnail || getDefaultThumbnail(item.video_id),
+            })
+            .eq("id", item.id);
+        }
+      } catch (err) {
+        console.warn("Queue metadata backfill error:", err);
+      } finally {
+        backfilling = false;
+      }
+    }
 
     async function loadQueue() {
       const { data, error } = await supabase
@@ -124,7 +159,17 @@ export default function QueuePanel({ roomId, isHost, onPlay }) {
         return;
       }
 
-      setItems(data || []);
+      const normalized = (data || []).map((item) => ({
+        ...item,
+        title:
+          String(item.title || "").trim() || cleanTitleFromId(item.video_id),
+        thumbnail:
+          String(item.thumbnail || "").trim() ||
+          getDefaultThumbnail(item.video_id),
+      }));
+
+      setItems(normalized);
+      backfillMissingMetadata(data || []);
     }
 
     loadQueue();
@@ -408,8 +453,7 @@ export default function QueuePanel({ roomId, isHost, onPlay }) {
                       borderRadius: 12,
                       border: "1px solid #d1d5db",
                       background: !isHost || isBusy ? "#f3f4f6" : "#fff",
-                      cursor:
-                        !isHost || isBusy ? "not-allowed" : "pointer",
+                      cursor: !isHost || isBusy ? "not-allowed" : "pointer",
                       fontWeight: 700,
                     }}
                   >
