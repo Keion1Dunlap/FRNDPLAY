@@ -31,8 +31,7 @@ function toSafeNumber(value, fallback = 0) {
 
 function formatParticipantLabel(p, hostUserId) {
   const email = String(p?.email || "").trim().toLowerCase();
-  const short =
-    email && email.includes("@") ? email.split("@")[0] : "guest";
+  const short = email && email.includes("@") ? email.split("@")[0] : "guest";
   const isHostParticipant =
     p?.userId && hostUserId && String(p.userId) === String(hostUserId);
 
@@ -41,6 +40,37 @@ function formatParticipantLabel(p, hostUserId) {
     name: short,
     isHost: !!isHostParticipant,
   };
+}
+
+function useIsMobile(breakpoint = 900) {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.innerWidth < breakpoint;
+  });
+
+  useEffect(() => {
+    const onResize = () => {
+      setIsMobile(window.innerWidth < breakpoint);
+    };
+
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [breakpoint]);
+
+  return isMobile;
+}
+
+function getDefaultThumbnail(videoId) {
+  const id = String(videoId || "").trim();
+  return isValidYouTubeId(id)
+    ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg`
+    : "";
+}
+
+function fallbackTitle(videoId) {
+  const id = String(videoId || "").trim();
+  return id ? `YouTube Video (${id})` : "No track selected";
 }
 
 export default function RoomView() {
@@ -59,11 +89,17 @@ export default function RoomView() {
 
   const [seekTo, setSeekTo] = useState(null);
   const [participants, setParticipants] = useState([]);
+  const [nowPlayingMeta, setNowPlayingMeta] = useState({
+    title: "",
+    thumbnail: "",
+    provider: "youtube",
+  });
 
   const playerCtrlRef = useRef(null);
   const advancingRef = useRef(false);
   const isHostRef = useRef(false);
 
+  const isMobile = useIsMobile(900);
   const isHost = role === "HOST";
 
   useEffect(() => {
@@ -80,13 +116,14 @@ export default function RoomView() {
       return {
         title: "",
         thumbnail: "",
+        provider: "youtube",
       };
     }
 
     try {
       const { data, error } = await supabase
         .from("queue_items")
-        .select("title, thumbnail")
+        .select("title, thumbnail, provider")
         .eq("room_id", String(room.id))
         .eq("video_id", String(videoId).trim())
         .order("created_at", { ascending: false })
@@ -99,13 +136,34 @@ export default function RoomView() {
       return {
         title: String(item?.title || "").trim(),
         thumbnail: String(item?.thumbnail || "").trim(),
+        provider: String(item?.provider || "youtube").trim(),
       };
     } catch {
       return {
         title: "",
         thumbnail: "",
+        provider: "youtube",
       };
     }
+  };
+
+  const refreshNowPlayingMeta = async (videoId) => {
+    if (!isValidYouTubeId(videoId)) {
+      setNowPlayingMeta({
+        title: "",
+        thumbnail: "",
+        provider: "youtube",
+      });
+      return;
+    }
+
+    const meta = await getCurrentQueueMeta(videoId);
+
+    setNowPlayingMeta({
+      title: meta.title || fallbackTitle(videoId),
+      thumbnail: meta.thumbnail || getDefaultThumbnail(videoId),
+      provider: meta.provider || "youtube",
+    });
   };
 
   const addToPlaybackHistory = async (videoId) => {
@@ -218,6 +276,10 @@ export default function RoomView() {
       setIsPlaying(!!r.now_playing);
       setHostTime(t);
       setLocalTime(t);
+
+      if (String(r.now_video_id || "").trim()) {
+        await refreshNowPlayingMeta(String(r.now_video_id || "").trim());
+      }
 
       setLoading(false);
     }
@@ -359,7 +421,7 @@ export default function RoomView() {
           table: "rooms",
           filter: `id=eq.${room.id}`,
         },
-        (payload) => {
+        async (payload) => {
           const next = payload?.new;
           if (!next) return;
 
@@ -371,6 +433,16 @@ export default function RoomView() {
           setNowVideoId(nextVideoId);
           setIsPlaying(nextPlaying);
           setHostTime(nextTime);
+
+          if (nextVideoId) {
+            refreshNowPlayingMeta(nextVideoId);
+          } else {
+            setNowPlayingMeta({
+              title: "",
+              thumbnail: "",
+              provider: "youtube",
+            });
+          }
 
           if (!isHostRef.current) {
             const playerTime = playerCtrlRef.current?.getTime?.();
@@ -442,7 +514,14 @@ export default function RoomView() {
       await addToPlaybackHistory(id);
     }
 
+    const meta = await getCurrentQueueMeta(id);
+
     setNowVideoId(id);
+    setNowPlayingMeta({
+      title: meta.title || fallbackTitle(id),
+      thumbnail: meta.thumbnail || getDefaultThumbnail(id),
+      provider: meta.provider || "youtube",
+    });
     setIsPlaying(true);
     setHostTime(0);
     setLocalTime(0);
@@ -592,6 +671,11 @@ export default function RoomView() {
 
       if (!next?.video_id || !isValidYouTubeId(next.video_id)) {
         setNowVideoId("");
+        setNowPlayingMeta({
+          title: "",
+          thumbnail: "",
+          provider: "youtube",
+        });
         setIsPlaying(false);
         setHostTime(0);
         setLocalTime(0);
@@ -636,18 +720,25 @@ export default function RoomView() {
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 1100, margin: "0 auto" }}>
+    <div
+      style={{
+        padding: isMobile ? 14 : 24,
+        maxWidth: 1100,
+        margin: "0 auto",
+      }}
+    >
       <div
         style={{
           display: "flex",
-          alignItems: "center",
+          alignItems: isMobile ? "stretch" : "center",
           justifyContent: "space-between",
-          gap: 16,
+          gap: 12,
           flexWrap: "wrap",
+          flexDirection: isMobile ? "column" : "row",
         }}
       >
         <div>
-          <h1 style={{ margin: 0 }}>Room</h1>
+          <h1 style={{ margin: 0, fontSize: isMobile ? 28 : 32 }}>Room</h1>
           <div style={{ opacity: 0.8 }}>Code: {roomCode}</div>
         </div>
 
@@ -659,6 +750,7 @@ export default function RoomView() {
             border: "1px solid #ddd",
             background: "white",
             cursor: "pointer",
+            width: isMobile ? "100%" : "auto",
           }}
         >
           Copy Share Link
@@ -707,12 +799,14 @@ export default function RoomView() {
         style={{
           marginTop: 24,
           display: "grid",
-          gridTemplateColumns: "1.2fr 0.8fr",
+          gridTemplateColumns: isMobile ? "1fr" : "1.2fr 0.8fr",
           gap: 18,
         }}
       >
         <div>
-          <h2 style={{ margin: "0 0 6px" }}>Room: {roomCode}</h2>
+          <h2 style={{ margin: "0 0 6px", fontSize: isMobile ? 22 : 24 }}>
+            Room: {roomCode}
+          </h2>
           <div style={{ marginBottom: 12, opacity: 0.85 }}>
             Your role: <b>{role}</b>{" "}
             {isHost ? (
@@ -727,10 +821,83 @@ export default function RoomView() {
               : "Host controls playback."}
           </div>
 
-          <div style={{ marginBottom: 10, opacity: 0.7 }}>
-            {isValidYouTubeId(nowVideoId)
-              ? `${nowVideoId} • ${Math.floor((isHost ? localTime : hostTime) || 0)}s`
-              : "No video selected"}
+          <div
+            style={{
+              marginBottom: 14,
+              border: "1px solid #e5e7eb",
+              borderRadius: 18,
+              padding: 12,
+              background: "#fff",
+              display: "grid",
+              gridTemplateColumns: isValidYouTubeId(nowVideoId) ? "120px 1fr" : "1fr",
+              gap: 12,
+              alignItems: "center",
+            }}
+          >
+            {isValidYouTubeId(nowVideoId) ? (
+              <>
+                <div
+                  style={{
+                    width: "100%",
+                    aspectRatio: "16 / 9",
+                    borderRadius: 14,
+                    overflow: "hidden",
+                    background: "#111",
+                  }}
+                >
+                  {nowPlayingMeta.thumbnail ? (
+                    <img
+                      src={nowPlayingMeta.thumbnail}
+                      alt={nowPlayingMeta.title || "Now playing"}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        display: "block",
+                      }}
+                    />
+                  ) : null}
+                </div>
+
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      color: "#6b7280",
+                      fontSize: 13,
+                      textTransform: "capitalize",
+                      marginBottom: 4,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {nowPlayingMeta.provider || "youtube"}
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: isMobile ? 18 : 20,
+                      fontWeight: 900,
+                      lineHeight: 1.2,
+                      color: "#111827",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {nowPlayingMeta.title || fallbackTitle(nowVideoId)}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 6,
+                      color: "#6b7280",
+                      fontSize: 13,
+                    }}
+                  >
+                    {Math.floor((isHost ? localTime : hostTime) || 0)}s elapsed
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div style={{ color: "#6b7280" }}>No video selected</div>
+            )}
           </div>
 
           {isValidYouTubeId(nowVideoId) ? (
@@ -759,7 +926,14 @@ export default function RoomView() {
             />
           )}
 
-          <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div
+            style={{
+              marginTop: 12,
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, auto)",
+              gap: 10,
+            }}
+          >
             <button
               disabled={!isHost || !isValidYouTubeId(nowVideoId)}
               onClick={handlePrevious}
@@ -769,6 +943,7 @@ export default function RoomView() {
                 border: "1px solid #ddd",
                 background: !isHost || !isValidYouTubeId(nowVideoId) ? "#f3f3f3" : "white",
                 cursor: !isHost || !isValidYouTubeId(nowVideoId) ? "not-allowed" : "pointer",
+                width: "100%",
               }}
             >
               Previous
@@ -783,6 +958,7 @@ export default function RoomView() {
                 border: "1px solid #ddd",
                 background: !isHost || !isValidYouTubeId(nowVideoId) ? "#f3f3f3" : "white",
                 cursor: !isHost || !isValidYouTubeId(nowVideoId) ? "not-allowed" : "pointer",
+                width: "100%",
               }}
             >
               Play
@@ -797,6 +973,7 @@ export default function RoomView() {
                 border: "1px solid #ddd",
                 background: !isHost || !isValidYouTubeId(nowVideoId) ? "#f3f3f3" : "white",
                 cursor: !isHost || !isValidYouTubeId(nowVideoId) ? "not-allowed" : "pointer",
+                width: "100%",
               }}
             >
               Pause
@@ -811,6 +988,7 @@ export default function RoomView() {
                 border: "1px solid #ddd",
                 background: !isHost ? "#f3f3f3" : "white",
                 cursor: !isHost ? "not-allowed" : "pointer",
+                width: "100%",
               }}
             >
               Skip
