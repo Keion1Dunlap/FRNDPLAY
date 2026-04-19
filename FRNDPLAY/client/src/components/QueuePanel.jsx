@@ -55,6 +55,12 @@ function getDefaultThumbnail(videoId) {
     : "";
 }
 
+function formatAdder(email) {
+  const em = String(email || "").trim().toLowerCase();
+  if (!em) return "Added by someone";
+  return `Added by ${em}`;
+}
+
 async function getYouTubeMeta(videoId) {
   const id = String(videoId || "").trim();
 
@@ -97,8 +103,30 @@ export default function QueuePanel({ roomId, isHost, onPlay }) {
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [session, setSession] = useState(null);
 
   const countLabel = useMemo(() => items.length, [items]);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function initAuth() {
+      const { data } = await supabase.auth.getSession();
+      if (!alive) return;
+      setSession(data?.session ?? null);
+    }
+
+    initAuth();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, next) => {
+      setSession(next ?? null);
+    });
+
+    return () => {
+      alive = false;
+      sub?.subscription?.unsubscribe?.();
+    };
+  }, []);
 
   useEffect(() => {
     if (!roomId) {
@@ -224,6 +252,8 @@ export default function QueuePanel({ roomId, isHost, onPlay }) {
         thumbnail: meta.thumbnail || getDefaultThumbnail(videoId),
         provider: "youtube",
         position: nextPosition,
+        added_by_user_id: session?.user?.id || null,
+        added_by_email: session?.user?.email || null,
       };
 
       const { error } = await supabase.from("queue_items").insert(payload);
@@ -432,6 +462,16 @@ export default function QueuePanel({ roomId, isHost, onPlay }) {
                   }}
                 >
                   {String(item.provider || "youtube")}
+                </div>
+
+                <div
+                  style={{
+                    color: "#6b7280",
+                    fontSize: 13,
+                    marginBottom: 4,
+                  }}
+                >
+                  {formatAdder(item.added_by_email)}
                 </div>
 
                 <div
