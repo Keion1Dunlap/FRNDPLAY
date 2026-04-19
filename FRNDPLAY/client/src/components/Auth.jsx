@@ -1,8 +1,6 @@
-// client/src/components/Auth.jsx
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabase";
 
-// Key where we stash a room code while user is going through email login
 const PENDING_ROOM_KEY = "frndplay_pending_room_code";
 
 export default function Auth() {
@@ -10,7 +8,6 @@ export default function Auth() {
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState("");
 
-  // Read ?room= from URL (if present) and normalize it
   const roomCodeFromUrl = useMemo(() => {
     try {
       const url = new URL(window.location.href);
@@ -21,20 +18,48 @@ export default function Auth() {
     }
   }, []);
 
-  // If we have a room in the URL, store it so we can restore after magic-link redirect
   useEffect(() => {
     if (roomCodeFromUrl) {
       try {
         localStorage.setItem(PENDING_ROOM_KEY, roomCodeFromUrl);
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
   }, [roomCodeFromUrl]);
 
-  // After auth completes, Supabase typically redirects to Site URL (or emailRedirectTo),
-  // sometimes losing query params. If we are signed in AND there's a pending room code
-  // but URL doesn't have ?room=, restore it.
+  // ✅ FIXED: handles BOTH ?code AND #access_token flows
+  useEffect(() => {
+    let ignore = false;
+
+    const finishAuthRedirect = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+
+        if (error) throw error;
+
+        // If session exists → clean URL
+        if (data?.session) {
+          const url = new URL(window.location.href);
+
+          url.hash = ""; // removes #access_token etc
+          url.searchParams.delete("code");
+          url.searchParams.delete("type");
+
+          window.history.replaceState({}, "", url.toString());
+        }
+      } catch (e) {
+        if (!ignore) {
+          setMsg(String(e?.message ?? e));
+        }
+      }
+    };
+
+    finishAuthRedirect();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
   useEffect(() => {
     let ignore = false;
 
@@ -42,7 +67,6 @@ export default function Auth() {
       try {
         const { data } = await supabase.auth.getSession();
         const u = data?.session?.user;
-
         if (!u) return;
 
         const url = new URL(window.location.href);
@@ -55,30 +79,21 @@ export default function Auth() {
           pending = "";
         }
 
-        // If user is signed in but URL lost ?room=, restore it
         if (!hasRoom && pending) {
           url.searchParams.set("room", pending);
-          // Remove any auth hash fragments if present (optional cleanup)
-          // (we keep the URL clean so reloads are stable)
           window.history.replaceState({}, "", url.toString());
         }
 
-        // If we now have ?room= in URL, clear the pending stash
         if (url.searchParams.get("room")) {
           try {
             localStorage.removeItem(PENDING_ROOM_KEY);
-          } catch {
-            // ignore
-          }
+          } catch {}
         }
-      } catch {
-        // ignore
-      }
+      } catch {}
     };
 
     run();
 
-    // Also rerun when auth changes (magic link completes)
     const { data: sub } = supabase.auth.onAuthStateChange(() => {
       if (!ignore) run();
     });
@@ -97,7 +112,6 @@ export default function Auth() {
       const em = String(email || "").trim();
       if (!em) throw new Error("Enter your email.");
 
-      // Prefer room in URL; fallback to pending localStorage
       let pending = roomCodeFromUrl;
       if (!pending) {
         try {
@@ -107,20 +121,14 @@ export default function Auth() {
         }
       }
 
-      // Build redirect target:
-      // - If joining via share link, keep ?room=CODE
-      // - Otherwise just go home
       const redirectTo = pending
         ? `${window.location.origin}/?room=${encodeURIComponent(pending)}`
         : `${window.location.origin}/`;
 
-      // Stash pending code (backup)
       if (pending) {
         try {
           localStorage.setItem(PENDING_ROOM_KEY, pending);
-        } catch {
-          // ignore
-        }
+        } catch {}
       }
 
       const { error } = await supabase.auth.signInWithOtp({
