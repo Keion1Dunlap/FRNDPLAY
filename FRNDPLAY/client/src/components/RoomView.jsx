@@ -28,6 +28,20 @@ function toSafeNumber(value, fallback = 0) {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function formatParticipantLabel(p, hostUserId) {
+  const email = String(p?.email || "").trim().toLowerCase();
+  const short =
+    email && email.includes("@") ? email.split("@")[0] : "guest";
+  const isHostParticipant =
+    p?.userId && hostUserId && String(p.userId) === String(hostUserId);
+
+  return {
+    id: p?.presenceId || `${p?.userId || "anon"}-${short}`,
+    name: short,
+    isHost: !!isHostParticipant,
+  };
+}
+
 export default function RoomView() {
   const roomCode = useMemo(() => getRoomCodeFromUrl(), []);
   const [loading, setLoading] = useState(true);
@@ -43,6 +57,7 @@ export default function RoomView() {
   const [localTime, setLocalTime] = useState(0);
 
   const [seekTo, setSeekTo] = useState(null);
+  const [participants, setParticipants] = useState([]);
 
   const playerCtrlRef = useRef(null);
   const advancingRef = useRef(false);
@@ -265,6 +280,75 @@ export default function RoomView() {
     };
   }, [room?.id, room?.host_user_id, session?.user?.id]);
 
+  // --- presence / who's in room ---
+  useEffect(() => {
+    if (!room?.id) return;
+
+    const presenceChannel = supabase.channel(`presence:room:${room.id}`, {
+      config: {
+        presence: {
+          key: session?.user?.id || `anon-${Math.random().toString(36).slice(2)}`,
+        },
+      },
+    });
+
+    const syncParticipants = () => {
+      const state = presenceChannel.presenceState();
+      const flat = Object.values(state).flatMap((entries) => entries || []);
+
+      const mapped = flat.map((entry) =>
+        formatParticipantLabel(
+          {
+            presenceId: entry.presenceId,
+            userId: entry.userId,
+            email: entry.email,
+          },
+          room?.host_user_id
+        )
+      );
+
+      const deduped = [];
+      const seen = new Set();
+
+      for (const p of mapped) {
+        if (seen.has(p.id)) continue;
+        seen.add(p.id);
+        deduped.push(p);
+      }
+
+      deduped.sort((a, b) => {
+        if (a.isHost && !b.isHost) return -1;
+        if (!a.isHost && b.isHost) return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      setParticipants(deduped);
+    };
+
+    presenceChannel
+      .on("presence", { event: "sync" }, syncParticipants)
+      .on("presence", { event: "join" }, syncParticipants)
+      .on("presence", { event: "leave" }, syncParticipants);
+
+    presenceChannel.subscribe(async (status) => {
+      if (status === "SUBSCRIBED") {
+        await presenceChannel.track({
+          presenceId:
+            session?.user?.id ||
+            `anon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          userId: session?.user?.id || null,
+          email: session?.user?.email || "guest@frndplay.local",
+          roomCode,
+          joinedAt: new Date().toISOString(),
+        });
+      }
+    });
+
+    return () => {
+      supabase.removeChannel(presenceChannel);
+    };
+  }, [room?.id, room?.host_user_id, roomCode, session?.user?.email, session?.user?.id]);
+
   // --- realtime room sync ---
   useEffect(() => {
     if (!room?.id) return;
@@ -440,7 +524,6 @@ export default function RoomView() {
 
     const exact = getExactPlayerTime();
 
-    // Restart current track if already a few seconds in
     if (exact > 3) {
       setLocalTime(0);
       setHostTime(0);
@@ -564,6 +647,8 @@ export default function RoomView() {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
+          gap: 16,
+          flexWrap: "wrap",
         }}
       >
         <div>
@@ -583,6 +668,44 @@ export default function RoomView() {
         >
           Copy Share Link
         </button>
+      </div>
+
+      <div
+        style={{
+          marginTop: 16,
+          border: "1px solid #e5e7eb",
+          borderRadius: 14,
+          padding: 14,
+          background: "#fff",
+        }}
+      >
+        <div style={{ fontWeight: 800, marginBottom: 10 }}>
+          In this room ({participants.length})
+        </div>
+
+        {participants.length === 0 ? (
+          <div style={{ color: "#6b7280" }}>No active listeners detected yet.</div>
+        ) : (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {participants.map((p) => (
+              <div
+                key={p.id}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 999,
+                  border: "1px solid #d1d5db",
+                  background: p.isHost ? "#111" : "#fff",
+                  color: p.isHost ? "#fff" : "#111",
+                  fontWeight: 700,
+                  fontSize: 13,
+                }}
+              >
+                {p.name}
+                {p.isHost ? " • host" : ""}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div
