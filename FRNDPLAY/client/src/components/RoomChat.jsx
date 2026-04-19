@@ -22,6 +22,7 @@ export default function RoomChat({ roomId }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [session, setSession] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -31,8 +32,14 @@ export default function RoomChat({ roomId }) {
     let alive = true;
 
     async function initAuth() {
-      const { data } = await supabase.auth.getSession();
+      const { data, error } = await supabase.auth.getSession();
       if (!alive) return;
+
+      if (error) {
+        console.error("Chat auth load error:", error);
+        return;
+      }
+
       setSession(data?.session ?? null);
     }
 
@@ -57,24 +64,33 @@ export default function RoomChat({ roomId }) {
     let alive = true;
 
     async function loadMessages() {
-      const { data, error } = await supabase
-        .from("room_messages")
-        .select("*")
-        .eq("room_id", String(roomId))
-        .order("created_at", { ascending: true })
-        .limit(200);
+      setLoading(true);
 
-      if (!alive) return;
+      try {
+        const { data, error } = await supabase
+          .from("room_messages")
+          .select("*")
+          .eq("room_id", String(roomId))
+          .order("created_at", { ascending: true })
+          .limit(200);
 
-      if (error) {
-        console.error("Chat load error:", error);
-        setErrorMsg(error.message || "Failed to load chat.");
-        return;
+        if (!alive) return;
+        if (error) throw error;
+
+        setMessages(data || []);
+      } catch (err) {
+        console.error("Chat load error:", err);
+        if (alive) {
+          setErrorMsg(err.message || "Failed to load chat.");
+        }
+      } finally {
+        if (alive) {
+          setLoading(false);
+        }
       }
-
-      setMessages(data || []);
     }
 
+    setErrorMsg("");
     loadMessages();
 
     const channel = supabase
@@ -82,16 +98,58 @@ export default function RoomChat({ roomId }) {
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "INSERT",
           schema: "public",
           table: "room_messages",
           filter: `room_id=eq.${roomId}`,
         },
-        () => {
-          loadMessages();
+        (payload) => {
+          const next = payload?.new;
+          if (!next) return;
+
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === next.id)) return prev;
+            return [...prev, next];
+          });
         }
       )
-      .subscribe();
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "room_messages",
+          filter: `room_id=eq.${roomId}`,
+        },
+        (payload) => {
+          const oldRow = payload?.old;
+          if (!oldRow?.id) return;
+
+          setMessages((prev) => prev.filter((m) => m.id !== oldRow.id));
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "room_messages",
+          filter: `room_id=eq.${roomId}`,
+        },
+        (payload) => {
+          const next = payload?.new;
+          if (!next?.id) return;
+
+          setMessages((prev) =>
+            prev.map((m) => (m.id === next.id ? next : m))
+          );
+        }
+      )
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          console.log("Chat realtime subscribed");
+        }
+      });
 
     return () => {
       alive = false;
@@ -109,13 +167,22 @@ export default function RoomChat({ roomId }) {
     setErrorMsg("");
 
     try {
-      const { error } = await supabase.from("room_messages").insert({
-        room_id: String(roomId),
-        user_id: session?.user?.id || null,
-        user_email: session?.user?.email || null,
-        body,
-      });
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
 
+      if (userError) throw userError;
+      if (!user) throw new Error("You must be signed in to chat.");
+
+      const payload = {
+        room_id: String(roomId),
+        user_id: user.id,
+        user_email: user.email || null,
+        body,
+      };
+
+      const { error } = await supabase.from("room_messages").insert(payload);
       if (error) throw error;
 
       setInput("");
@@ -153,7 +220,9 @@ export default function RoomChat({ roomId }) {
           gap: 10,
         }}
       >
-        {messages.length === 0 ? (
+        {loading ? (
+          <div style={{ color: "#6b7280" }}>Loading chat...</div>
+        ) : messages.length === 0 ? (
           <div style={{ color: "#6b7280" }}>No messages yet.</div>
         ) : (
           messages.map((msg) => (
