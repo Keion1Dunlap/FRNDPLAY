@@ -48,6 +48,49 @@ function cleanTitleFromId(videoId) {
   return id ? `YouTube Video (${id})` : "Untitled Video";
 }
 
+function getDefaultThumbnail(videoId) {
+  const id = String(videoId || "").trim();
+  return isValidYouTubeId(id)
+    ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg`
+    : "";
+}
+
+async function getYouTubeMeta(videoId) {
+  const id = String(videoId || "").trim();
+
+  if (!isValidYouTubeId(id)) {
+    return {
+      title: cleanTitleFromId(id),
+      thumbnail: "",
+    };
+  }
+
+  try {
+    const res = await fetch(
+      `https://www.youtube.com/oembed?url=${encodeURIComponent(
+        `https://www.youtube.com/watch?v=${id}`
+      )}&format=json`
+    );
+
+    if (!res.ok) {
+      throw new Error(`Metadata fetch failed (${res.status})`);
+    }
+
+    const data = await res.json();
+
+    return {
+      title: String(data?.title || "").trim() || cleanTitleFromId(id),
+      thumbnail:
+        String(data?.thumbnail_url || "").trim() || getDefaultThumbnail(id),
+    };
+  } catch {
+    return {
+      title: cleanTitleFromId(id),
+      thumbnail: getDefaultThumbnail(id),
+    };
+  }
+}
+
 export default function QueuePanel({ roomId, isHost, onPlay }) {
   const [items, setItems] = useState([]);
   const [input, setInput] = useState("");
@@ -90,7 +133,12 @@ export default function QueuePanel({ roomId, isHost, onPlay }) {
       .channel(`queue:${roomId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "queue_items", filter: `room_id=eq.${roomId}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "queue_items",
+          filter: `room_id=eq.${roomId}`,
+        },
         () => {
           loadQueue();
         }
@@ -122,10 +170,13 @@ export default function QueuePanel({ roomId, isHost, onPlay }) {
           ? Math.max(...items.map((x) => Number(x.position || 0))) + 1
           : 1;
 
+      const meta = await getYouTubeMeta(videoId);
+
       const payload = {
         room_id: String(roomId),
         video_id: videoId,
-        title: cleanTitleFromId(videoId),
+        title: meta.title || cleanTitleFromId(videoId),
+        thumbnail: meta.thumbnail || getDefaultThumbnail(videoId),
         provider: "youtube",
         position: nextPosition,
       };
@@ -171,7 +222,9 @@ export default function QueuePanel({ roomId, isHost, onPlay }) {
       }
 
       if (!data || data.length === 0) {
-        setErrorMsg("Nothing was removed. This is usually a Supabase delete policy issue.");
+        setErrorMsg(
+          "Nothing was removed. This is usually a Supabase delete policy issue."
+        );
         return;
       }
 
@@ -201,14 +254,15 @@ export default function QueuePanel({ roomId, isHost, onPlay }) {
     <div
       style={{
         border: "1px solid #e5e7eb",
-        borderRadius: 16,
+        borderRadius: 18,
         padding: 18,
         background: "#fff",
+        boxShadow: "0 10px 30px rgba(0,0,0,0.04)",
       }}
     >
       <h3 style={{ marginTop: 0, marginBottom: 14 }}>Queue ({countLabel})</h3>
 
-      <div style={{ display: "grid", gap: 12, marginBottom: 14 }}>
+      <div style={{ display: "grid", gap: 12, marginBottom: 16 }}>
         <input
           type="text"
           value={input}
@@ -234,17 +288,20 @@ export default function QueuePanel({ roomId, isHost, onPlay }) {
             style={{
               padding: "10px 16px",
               borderRadius: 12,
-              border: "1px solid #d1d5db",
-              background: !roomId || adding ? "#f3f4f6" : "#fff",
+              border: "1px solid #111",
+              background: !roomId || adding ? "#f3f4f6" : "#111",
+              color: !roomId || adding ? "#666" : "#fff",
               cursor: !roomId || adding ? "not-allowed" : "pointer",
-              fontWeight: 600,
+              fontWeight: 700,
             }}
           >
-            {adding ? "Adding..." : "Add"}
+            {adding ? "Adding..." : "Add to Queue"}
           </button>
         </div>
 
-        {errorMsg ? <div style={{ color: "#b91c1c", fontSize: 14 }}>{errorMsg}</div> : null}
+        {errorMsg ? (
+          <div style={{ color: "#b91c1c", fontSize: 14 }}>{errorMsg}</div>
+        ) : null}
       </div>
 
       <div style={{ display: "grid", gap: 12 }}>
@@ -265,6 +322,10 @@ export default function QueuePanel({ roomId, isHost, onPlay }) {
           const title =
             String(item.title || "").trim() || cleanTitleFromId(item.video_id);
 
+          const thumbnail =
+            String(item.thumbnail || "").trim() ||
+            getDefaultThumbnail(item.video_id);
+
           const isBusy = busyId === item.id || busyId === item.video_id;
 
           return (
@@ -272,60 +333,104 @@ export default function QueuePanel({ roomId, isHost, onPlay }) {
               key={item.id || `${item.video_id}-${index}`}
               style={{
                 border: "1px solid #e5e7eb",
-                borderRadius: 14,
-                padding: 14,
+                borderRadius: 16,
+                padding: 12,
                 background: "#fff",
+                display: "grid",
+                gridTemplateColumns: "120px 1fr",
+                gap: 12,
+                alignItems: "start",
               }}
             >
               <div
                 style={{
-                  fontWeight: 700,
-                  fontSize: 16,
-                  marginBottom: 6,
-                  wordBreak: "break-word",
+                  width: "100%",
+                  aspectRatio: "16 / 9",
+                  borderRadius: 12,
+                  overflow: "hidden",
+                  background: "#111",
                 }}
               >
-                {title}
+                {thumbnail ? (
+                  <img
+                    src={thumbnail}
+                    alt={title}
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      display: "block",
+                    }}
+                  />
+                ) : null}
               </div>
 
-              <div style={{ color: "#6b7280", fontSize: 14, marginBottom: 4 }}>
-                {String(item.provider || "youtube")}
-              </div>
-
-              <div style={{ color: "#6b7280", fontSize: 14, marginBottom: 12 }}>
-                pos: {Number(item.position || index + 1)}
-              </div>
-
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button
-                  onClick={() => handlePlay(item)}
-                  disabled={!isHost || isBusy}
+              <div style={{ minWidth: 0 }}>
+                <div
                   style={{
-                    padding: "10px 16px",
-                    borderRadius: 12,
-                    border: "1px solid #d1d5db",
-                    background: !isHost || isBusy ? "#f3f4f6" : "#fff",
-                    cursor: !isHost || isBusy ? "not-allowed" : "pointer",
-                    fontWeight: 600,
+                    fontWeight: 800,
+                    fontSize: 15,
+                    marginBottom: 6,
+                    wordBreak: "break-word",
+                    lineHeight: 1.35,
                   }}
                 >
-                  Play
-                </button>
+                  {title}
+                </div>
 
-                <button
-                  onClick={() => handleRemove(item)}
-                  disabled={isBusy}
+                <div
                   style={{
-                    padding: "10px 16px",
-                    borderRadius: 12,
-                    border: "1px solid #d1d5db",
-                    background: isBusy ? "#f3f4f6" : "#fff",
-                    cursor: isBusy ? "not-allowed" : "pointer",
-                    fontWeight: 600,
+                    color: "#6b7280",
+                    fontSize: 13,
+                    marginBottom: 4,
+                    textTransform: "capitalize",
                   }}
                 >
-                  Remove
-                </button>
+                  {String(item.provider || "youtube")}
+                </div>
+
+                <div
+                  style={{
+                    color: "#6b7280",
+                    fontSize: 13,
+                    marginBottom: 12,
+                  }}
+                >
+                  Queue position: {Number(item.position || index + 1)}
+                </div>
+
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button
+                    onClick={() => handlePlay(item)}
+                    disabled={!isHost || isBusy}
+                    style={{
+                      padding: "10px 16px",
+                      borderRadius: 12,
+                      border: "1px solid #d1d5db",
+                      background: !isHost || isBusy ? "#f3f4f6" : "#fff",
+                      cursor:
+                        !isHost || isBusy ? "not-allowed" : "pointer",
+                      fontWeight: 700,
+                    }}
+                  >
+                    Play
+                  </button>
+
+                  <button
+                    onClick={() => handleRemove(item)}
+                    disabled={isBusy}
+                    style={{
+                      padding: "10px 16px",
+                      borderRadius: 12,
+                      border: "1px solid #d1d5db",
+                      background: isBusy ? "#f3f4f6" : "#fff",
+                      cursor: isBusy ? "not-allowed" : "pointer",
+                      fontWeight: 700,
+                    }}
+                  >
+                    Remove
+                  </button>
+                </div>
               </div>
             </div>
           );
