@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabase";
 import YouTubePlayer from "./YouTubePlayer";
 import QueuePanel from "./QueuePanel";
+import RoomChat from "./RoomChat";
 
 function getRoomCodeFromUrl() {
   try {
@@ -157,7 +158,6 @@ export default function RoomView() {
     }
   };
 
-  // --- auth/session ---
   useEffect(() => {
     let alive = true;
 
@@ -179,7 +179,6 @@ export default function RoomView() {
     };
   }, []);
 
-  // --- load room by code ---
   useEffect(() => {
     let alive = true;
 
@@ -230,7 +229,6 @@ export default function RoomView() {
     };
   }, [roomCode]);
 
-  // --- host ownership ---
   useEffect(() => {
     if (!room?.id) return;
 
@@ -280,7 +278,6 @@ export default function RoomView() {
     };
   }, [room?.id, room?.host_user_id, session?.user?.id]);
 
-  // --- presence / who's in room ---
   useEffect(() => {
     if (!room?.id) return;
 
@@ -349,7 +346,6 @@ export default function RoomView() {
     };
   }, [room?.id, room?.host_user_id, roomCode, session?.user?.email, session?.user?.id]);
 
-  // --- realtime room sync ---
   useEffect(() => {
     if (!room?.id) return;
 
@@ -403,7 +399,6 @@ export default function RoomView() {
     };
   }, [room?.id, localTime]);
 
-  // --- host heartbeat while playing only ---
   useEffect(() => {
     if (!room?.id || !isHost) return;
     if (!isValidYouTubeId(nowVideoId)) return;
@@ -821,6 +816,8 @@ export default function RoomView() {
               Skip
             </button>
           </div>
+
+          <RoomChat roomId={room?.id} />
         </div>
 
         <div>
