@@ -1,6 +1,6 @@
 // client/src/components/CreateRoom.jsx
 import { useState } from "react";
-import { supabase } from "../supabaseClient";
+import { supabase } from "../supabase";
 
 function makeCode(len = 6) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -18,10 +18,10 @@ export default function CreateRoom({ user, setRoom }) {
     setLoading(true);
 
     try {
-      if (!user) throw new Error("You must be signed in to create a room.");
+      if (!user?.id) throw new Error("You must be signed in to create a room.");
 
       // Try a few times in case code collides with an existing one
-      let room = null;
+      let created = null;
       let lastErr = null;
 
       for (let attempt = 0; attempt < 5; attempt++) {
@@ -29,55 +29,47 @@ export default function CreateRoom({ user, setRoom }) {
 
         const { data, error: roomError } = await supabase
           .from("rooms")
-          .insert([{ code, owner_id: user.id }]) // <-- keep your schema choice
+          .insert([{ code, owner_id: user.id }])
           .select("*")
           .single();
 
         if (!roomError && data) {
-          room = data;
+          created = data;
           break;
         }
-
         lastErr = roomError;
-
-        // If it's NOT a unique constraint collision, don't keep retrying
-        const msg = (roomError?.message || "").toLowerCase();
-        const isUniqueCollision =
-          msg.includes("duplicate") ||
-          msg.includes("unique") ||
-          msg.includes("rooms_code") ||
-          msg.includes("code");
-
-        if (!isUniqueCollision) break;
       }
 
-      if (!room) throw lastErr || new Error("Failed to create room.");
+      if (!created) throw lastErr || new Error("Could not create room.");
 
-      // Add creator as host (if you already have an auto-add trigger, this will just upsert)
-      const { error: memberError } = await supabase
-        .from("room_members")
-        .upsert([{ room_id: room.id, user_id: user.id, role: "host" }], {
-          onConflict: "room_id,user_id",
-        });
-
-      if (memberError) throw memberError;
-
-      setRoom(room);
-    } catch (err) {
-      console.error(err);
-      setError(err?.message || "Failed to create room");
+      // IMPORTANT:
+      // Do NOT insert into room_members here.
+      // Your DB trigger (add_host_member_on_room_create) should add the host automatically.
+      setRoom(created);
+    } catch (e) {
+      setError(String(e?.message ?? e));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <>
-      <button onClick={createRoom} disabled={loading || !user}>
+    <div style={{ marginTop: 16 }}>
+      <h2>Create a room</h2>
+      <button onClick={createRoom} disabled={loading} style={btn}>
         {loading ? "Creating..." : "Create Room"}
       </button>
-
-      {error ? <div className="error">{error}</div> : null}
-    </>
+      {error ? <div style={{ marginTop: 10, color: "#b00020" }}>{error}</div> : null}
+    </div>
   );
 }
+
+const btn = {
+  padding: "10px 14px",
+  borderRadius: 12,
+  border: "1px solid #111",
+  background: "#111",
+  color: "white",
+  cursor: "pointer",
+  fontWeight: 800,
+};

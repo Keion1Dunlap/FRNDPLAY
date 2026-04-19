@@ -1,621 +1,642 @@
-// client/src/components/RoomView.jsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabase";
+import YouTubePlayer from "./YouTubePlayer";
+import QueuePanel from "./QueuePanel";
 
-// Helpers
-function fmtDate(dt) {
+function getRoomCodeFromUrl() {
   try {
-    return new Date(dt).toLocaleString();
+    const url = new URL(window.location.href);
+    return (
+      url.searchParams.get("room") ||
+      url.searchParams.get("code") ||
+      url.searchParams.get("roomCode") ||
+      ""
+    )
+      .toUpperCase()
+      .trim();
   } catch {
     return "";
   }
 }
-function msUntil(iso) {
-  const t = new Date(iso).getTime();
-  return t - Date.now();
-}
-function humanCountdown(ms) {
-  if (!Number.isFinite(ms)) return "";
-  if (ms <= 0) return "0m";
-  const totalSec = Math.floor(ms / 1000);
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  if (h <= 0) return `${m}m`;
-  return `${h}h ${m}m`;
+
+function isValidYouTubeId(value) {
+  return /^[a-zA-Z0-9_-]{11}$/.test(String(value || "").trim());
 }
 
-// Extract YouTube video id from URL or allow raw id
-function extractYouTubeId(input) {
-  const s = String(input || "").trim();
-  if (!s) return "";
-
-  // If it's already an 11-char-ish id with safe chars
-  if (/^[a-zA-Z0-9_-]{6,20}$/.test(s) && !s.includes("http")) return s;
-
-  try {
-    const url = new URL(s);
-    // youtu.be/<id>
-    if (url.hostname.includes("youtu.be")) {
-      return url.pathname.replace("/", "").trim();
-    }
-    // youtube.com/watch?v=<id>
-    const v = url.searchParams.get("v");
-    if (v) return v.trim();
-
-    // youtube.com/embed/<id>
-    const parts = url.pathname.split("/").filter(Boolean);
-    const embedIndex = parts.indexOf("embed");
-    if (embedIndex >= 0 && parts[embedIndex + 1]) return parts[embedIndex + 1].trim();
-
-    // youtube.com/shorts/<id>
-    const shortsIndex = parts.indexOf("shorts");
-    if (shortsIndex >= 0 && parts[shortsIndex + 1]) return parts[shortsIndex + 1].trim();
-  } catch {
-    // not a URL
-  }
-
-  return "";
+function toSafeNumber(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
 }
 
-export default function RoomView({ room, setRoom, onLeave, user }) {
-  const [members, setMembers] = useState([]);
-  const [queue, setQueue] = useState([]);
-  const [nowPlaying, setNowPlaying] = useState(null);
+export default function RoomView() {
+  const roomCode = useMemo(() => getRoomCodeFromUrl(), []);
+  const [loading, setLoading] = useState(true);
 
-  const [loadingMembers, setLoadingMembers] = useState(false);
-  const [loadingQueue, setLoadingQueue] = useState(false);
-  const [busyPay, setBusyPay] = useState(false);
+  const [session, setSession] = useState(null);
+  const [room, setRoom] = useState(null);
+  const [role, setRole] = useState("GUEST");
 
-  const [statusMsg, setStatusMsg] = useState("");
-  const [countdown, setCountdown] = useState("");
+  const [nowVideoId, setNowVideoId] = useState("");
+  const [isPlaying, setIsPlaying] = useState(false);
 
-  // Add song UI state
-  const [songInput, setSongInput] = useState("");
-  const [adding, setAdding] = useState(false);
+  const [hostTime, setHostTime] = useState(0);
+  const [localTime, setLocalTime] = useState(0);
 
-  const expiresAt = room?.expires_at ?? null;
+  const [seekTo, setSeekTo] = useState(null);
 
-  const isHost = useMemo(() => {
-    const owner = room?.owner_id ?? room?.host_user_id;
-    return !!user?.id && !!owner && user.id === owner;
-  }, [room, user]);
+  const playerCtrlRef = useRef(null);
+  const advancingRef = useRef(false);
+  const isHostRef = useRef(false);
 
-  const roomIsActive = useMemo(() => {
-    if (expiresAt && msUntil(expiresAt) <= 0) return false;
-    return !!room?.party_active;
-  }, [room?.party_active, expiresAt]);
+  // Basic previous-track memory for current session
+  const previousVideoIdRef = useRef("");
+  const currentVideoIdRef = useRef("");
 
-  const canControlQueue = roomIsActive;
+  const isHost = role === "HOST";
 
-  // Countdown
   useEffect(() => {
-    if (!expiresAt) {
-      setCountdown("");
+    isHostRef.current = isHost;
+  }, [isHost]);
+
+  useEffect(() => {
+    currentVideoIdRef.current = nowVideoId;
+  }, [nowVideoId]);
+
+  const getExactPlayerTime = () => {
+    const exact = playerCtrlRef.current?.getTime?.();
+    return Number.isFinite(exact) ? exact : localTime;
+  };
+
+  // --- auth/session ---
+  useEffect(() => {
+    let alive = true;
+
+    async function initAuth() {
+      const { data } = await supabase.auth.getSession();
+      if (!alive) return;
+      setSession(data?.session ?? null);
+    }
+
+    initAuth();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, next) => {
+      setSession(next ?? null);
+    });
+
+    return () => {
+      alive = false;
+      sub?.subscription?.unsubscribe?.();
+    };
+  }, []);
+
+  // --- load room by code ---
+  useEffect(() => {
+    let alive = true;
+
+    async function boot() {
+      setLoading(true);
+
+      if (!roomCode) {
+        setLoading(false);
+        return;
+      }
+
+      const { data: rooms, error } = await supabase
+        .from("rooms")
+        .select("*")
+        .eq("code", roomCode)
+        .limit(1);
+
+      if (!alive) return;
+
+      if (error) {
+        console.error("Fetch room error:", error);
+        setLoading(false);
+        return;
+      }
+
+      const r = rooms?.[0] || null;
+      if (!r) {
+        console.error("Room not found for code:", roomCode);
+        setLoading(false);
+        return;
+      }
+
+      const t = toSafeNumber(r.now_time, 0);
+
+      setRoom(r);
+      setNowVideoId(String(r.now_video_id || "").trim());
+      setIsPlaying(!!r.now_playing);
+      setHostTime(t);
+      setLocalTime(t);
+
+      setLoading(false);
+    }
+
+    boot();
+
+    return () => {
+      alive = false;
+    };
+  }, [roomCode]);
+
+  // --- host ownership ---
+  useEffect(() => {
+    if (!room?.id) return;
+
+    const userId = session?.user?.id || null;
+
+    if (!userId) {
+      setRole("GUEST");
       return;
     }
-    const tick = () => {
-      const ms = msUntil(expiresAt);
-      if (ms <= 0) setCountdown("Expired");
-      else setCountdown(`Active for ${humanCountdown(ms)} (until ${fmtDate(expiresAt)})`);
+
+    if (room.host_user_id) {
+      setRole(room.host_user_id === userId ? "HOST" : "GUEST");
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      const { data, error } = await supabase
+        .from("rooms")
+        .update({ host_user_id: userId })
+        .eq("id", room.id)
+        .is("host_user_id", null)
+        .select()
+        .limit(1);
+
+      if (cancelled) return;
+
+      if (error) {
+        console.warn("Host claim failed:", error);
+        setRole("GUEST");
+        return;
+      }
+
+      const updated = data?.[0] || null;
+
+      if (updated?.host_user_id === userId) {
+        setRoom(updated);
+        setRole("HOST");
+      } else {
+        setRole("GUEST");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
     };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [expiresAt]);
+  }, [room?.id, room?.host_user_id, session?.user?.id]);
 
-  // Fetch members
-  const fetchMembers = async () => {
-    if (!room?.id) return;
-    setLoadingMembers(true);
-    try {
-      const { data, error } = await supabase
-        .from("room_members")
-        .select("id, user_id, role")
-        .eq("room_id", room.id);
-
-      if (error) throw error;
-      setMembers(data ?? []);
-    } catch (e) {
-      setStatusMsg(`Members load failed: ${String(e.message ?? e)}`);
-    } finally {
-      setLoadingMembers(false);
-    }
-  };
-
-  // Fetch queue
-  const fetchQueue = async () => {
-    if (!room?.id) return;
-    setLoadingQueue(true);
-    try {
-      const { data, error } = await supabase
-        .from("queue_items")
-        .select("id, room_id, provider, track_id, title, artist, artwork_url, position, added_by, created_at")
-        .eq("room_id", room.id)
-        .order("position", { ascending: true })
-        .order("created_at", { ascending: true });
-
-      if (error) throw error;
-      const items = data ?? [];
-      setQueue(items);
-      setNowPlaying(items[0] ?? null);
-    } catch (e) {
-      setStatusMsg(`Queue load failed: ${String(e.message ?? e)}`);
-    } finally {
-      setLoadingQueue(false);
-    }
-  };
-
-  // Realtime subscriptions
+  // --- realtime room sync ---
   useEffect(() => {
     if (!room?.id) return;
 
     const channel = supabase
-      .channel(`room:${room.id}:realtime`)
+      .channel(`room:${room.id}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "rooms", filter: `id=eq.${room.id}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "rooms",
+          filter: `id=eq.${room.id}`,
+        },
         (payload) => {
-          const updated = payload?.new;
-          if (updated) setRoom(updated);
+          const next = payload?.new;
+          if (!next) return;
+
+          const nextVideoId = String(next.now_video_id || "").trim();
+          const nextPlaying = !!next.now_playing;
+          const nextTime = toSafeNumber(next.now_time, 0);
+
+          setRoom(next);
+          setNowVideoId(nextVideoId);
+          setIsPlaying(nextPlaying);
+          setHostTime(nextTime);
+
+          if (!isHostRef.current) {
+            const playerTime = playerCtrlRef.current?.getTime?.();
+            const currentGuestTime = Number.isFinite(playerTime)
+              ? playerTime
+              : localTime;
+
+            const drift = Math.abs(currentGuestTime - nextTime);
+            const shouldSnap =
+              !isValidYouTubeId(nextVideoId) ||
+              !Number.isFinite(currentGuestTime) ||
+              drift > 1.25 ||
+              nextPlaying === false;
+
+            if (shouldSnap) {
+              setSeekTo(nextTime);
+              setLocalTime(nextTime);
+            }
+          }
         }
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "queue_items", filter: `room_id=eq.${room.id}` },
-        () => fetchQueue()
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "room_members", filter: `room_id=eq.${room.id}` },
-        () => fetchMembers()
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room?.id]);
+  }, [room?.id, localTime]);
 
-  // Initial load
+  // --- host heartbeat while playing only ---
   useEffect(() => {
-    fetchMembers();
-    fetchQueue();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room?.id]);
+    if (!room?.id || !isHost) return;
+    if (!isValidYouTubeId(nowVideoId)) return;
+    if (!isPlaying) return;
 
-  // Verify Stripe return (session_id in URL)
-  useEffect(() => {
-    const url = new URL(window.location.href);
-    const sessionId = url.searchParams.get("session_id");
-    if (!sessionId || !room?.id) return;
+    const interval = setInterval(async () => {
+      const exact = getExactPlayerTime();
+      setLocalTime(exact);
+      setHostTime(exact);
 
-    const verify = async () => {
       try {
-        setStatusMsg("Verifying payment...");
-        const { error } = await supabase.functions.invoke("verify-checkout-session", {
-          body: { session_id: sessionId, room_id: room.id },
-        });
-        if (error) throw error;
-
-        const { data: freshRoom, error: roomErr } = await supabase
+        await supabase
           .from("rooms")
-          .select("*")
-          .eq("id", room.id)
-          .single();
-        if (roomErr) throw roomErr;
-
-        setRoom(freshRoom);
-
-        url.searchParams.delete("session_id");
-        window.history.replaceState({}, "", url.toString());
-
-        setStatusMsg("Payment verified ✅");
-      } catch (e) {
-        setStatusMsg(`Verify failed: ${String(e.message ?? e)}`);
+          .update({
+            now_video_id: nowVideoId,
+            now_playing: true,
+            now_time: exact,
+            now_updated_at: new Date().toISOString(),
+          })
+          .eq("id", room.id);
+      } catch (err) {
+        console.warn("Heartbeat update failed:", err);
       }
-    };
+    }, 1200);
 
-    verify();
-  }, [room?.id, setRoom]);
+    return () => clearInterval(interval);
+  }, [room?.id, isHost, nowVideoId, isPlaying]);
 
-  // Checkout (pay/renew)
-  const startCheckout = async ({ mode }) => {
-    if (!room?.id) return;
-    setBusyPay(true);
-    setStatusMsg("");
-    try {
-      const { data, error } = await supabase.functions.invoke("create-checkout-session", {
-        body: { room_id: room.id, intent: mode },
-      });
-      if (error) throw error;
+  const handleHostSetVideo = async (videoId) => {
+    if (!room?.id || !isHost) return;
 
-      const checkoutUrl = data?.url || data?.checkout_url;
-      if (!checkoutUrl) throw new Error("No checkout URL returned.");
-
-      window.location.href = checkoutUrl;
-    } catch (e) {
-      setStatusMsg(`Checkout failed: ${String(e.message ?? e)}`);
-    } finally {
-      setBusyPay(false);
+    const id = String(videoId || "").trim();
+    if (!isValidYouTubeId(id)) {
+      console.warn("Refusing to play invalid video id:", id);
+      return;
     }
+
+    const currentId = String(currentVideoIdRef.current || "").trim();
+
+    if (isValidYouTubeId(currentId) && currentId !== id) {
+      previousVideoIdRef.current = currentId;
+    }
+
+    setNowVideoId(id);
+    setIsPlaying(true);
+    setHostTime(0);
+    setLocalTime(0);
+    setSeekTo(0);
+
+    playerCtrlRef.current?.load?.(id, 0);
+
+    setTimeout(() => {
+      playerCtrlRef.current?.play?.();
+    }, 120);
+
+    await supabase
+      .from("rooms")
+      .update({
+        now_video_id: id,
+        now_playing: true,
+        now_time: 0,
+        now_updated_at: new Date().toISOString(),
+      })
+      .eq("id", room.id);
   };
 
-  // Next track (delete current and renumber)
-  const nextTrack = async () => {
-    if (!canControlQueue) return;
-    try {
-      if (queue.length <= 1) return;
-      const [current, ...rest] = queue;
+  const handleHostPlay = async () => {
+    if (!room?.id || !isHost || !isValidYouTubeId(nowVideoId)) return;
 
-      await supabase.from("queue_items").delete().eq("id", current.id);
+    const exact = getExactPlayerTime();
 
-      for (let i = 0; i < rest.length; i++) {
-        // eslint-disable-next-line no-await-in-loop
-        await supabase.from("queue_items").update({ position: i }).eq("id", rest[i].id);
+    setLocalTime(exact);
+    setHostTime(exact);
+    setIsPlaying(true);
+
+    playerCtrlRef.current?.seek?.(exact);
+    playerCtrlRef.current?.play?.();
+
+    await supabase
+      .from("rooms")
+      .update({
+        now_playing: true,
+        now_time: exact,
+        now_updated_at: new Date().toISOString(),
+      })
+      .eq("id", room.id);
+  };
+
+  const handleHostPause = async () => {
+    if (!room?.id || !isHost || !isValidYouTubeId(nowVideoId)) return;
+
+    const exact = getExactPlayerTime();
+
+    setLocalTime(exact);
+    setHostTime(exact);
+    setIsPlaying(false);
+
+    playerCtrlRef.current?.seek?.(exact);
+    playerCtrlRef.current?.pause?.();
+
+    await supabase
+      .from("rooms")
+      .update({
+        now_playing: false,
+        now_time: exact,
+        now_updated_at: new Date().toISOString(),
+      })
+      .eq("id", room.id);
+  };
+
+  const handleSkip = async () => {
+    if (!room?.id || !isHost) return;
+    await handleEnded();
+  };
+
+  const handlePrevious = async () => {
+    if (!room?.id || !isHost || !isValidYouTubeId(nowVideoId)) return;
+
+    const exact = getExactPlayerTime();
+
+    // If the song is already a few seconds in, restart it
+    if (exact > 3) {
+      setLocalTime(0);
+      setHostTime(0);
+      setSeekTo(0);
+
+      playerCtrlRef.current?.seek?.(0);
+
+      if (isPlaying) {
+        playerCtrlRef.current?.play?.();
+      } else {
+        playerCtrlRef.current?.pause?.();
       }
-    } catch (e) {
-      setStatusMsg(`Next failed: ${String(e.message ?? e)}`);
+
+      await supabase
+        .from("rooms")
+        .update({
+          now_time: 0,
+          now_updated_at: new Date().toISOString(),
+        })
+        .eq("id", room.id);
+
+      return;
     }
+
+    // Otherwise go to the previous track, if one exists in this session
+    const previousId = String(previousVideoIdRef.current || "").trim();
+    if (!isValidYouTubeId(previousId)) return;
+
+    const currentId = String(nowVideoId || "").trim();
+
+    await handleHostSetVideo(previousId);
+
+    // Swap refs so Previous can toggle back if needed
+    previousVideoIdRef.current = currentId;
   };
 
-  // ✅ Add song handler
-  const addSong = async () => {
-    if (!canControlQueue) {
-      setStatusMsg("Room is expired — renew to add songs.");
-      return;
-    }
-    if (!room?.id) return;
-    if (!user?.id) {
-      setStatusMsg("You must be signed in to add songs.");
-      return;
-    }
+  const handleEnded = async () => {
+    if (!room?.id || !isHost) return;
+    if (advancingRef.current) return;
 
-    const videoId = extractYouTubeId(songInput);
-    if (!videoId) {
-      setStatusMsg("Paste a YouTube URL or video ID.");
-      return;
-    }
-
-    setAdding(true);
-    setStatusMsg("");
+    advancingRef.current = true;
 
     try {
-      const nextPos = queue.length;
+      const finishedVideoId = String(nowVideoId || "").trim();
 
-      const artworkUrl = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+      const { data: list, error } = await supabase
+        .from("queue_items")
+        .select("*")
+        .eq("room_id", String(room.id))
+        .order("position", { ascending: true });
 
-      const payload = {
-        room_id: room.id,
-        added_by: user.id,
-        provider: "youtube",
-        track_id: videoId,
-        title: videoId, // simple fallback; you can fetch real title later
-        artist: "",
-        artwork_url: artworkUrl,
-        position: nextPos,
-      };
+      if (error) {
+        console.warn("Auto-advance load error:", error);
+        return;
+      }
 
-      const { error } = await supabase.from("queue_items").insert([payload]);
-      if (error) throw error;
-
-      setSongInput("");
-      setStatusMsg("Added ✅");
-      // realtime will refresh queue
-    } catch (e) {
-      setStatusMsg(`Add failed: ${String(e.message ?? e)}`);
-    } finally {
-      setAdding(false);
-    }
-  };
-
-  const copyShareLink = async () => {
-    try {
-      const url = new URL(window.location.href);
-      url.searchParams.delete("session_id");
-      await navigator.clipboard.writeText(url.toString());
-      setStatusMsg("Share link copied ✅");
-    } catch {
-      setStatusMsg("Could not copy link (clipboard blocked).");
-    }
-  };
-
-  const PartyModeCard = () => (
-    <div style={styles.card}>
-      <h3 style={{ marginTop: 0 }}>Party Mode</h3>
-
-      {roomIsActive ? (
-        <div style={{ color: "green", fontWeight: 700 }}>✅ {countdown}</div>
-      ) : (
-        <div style={{ color: "#b00020", fontWeight: 800 }}>❌ Room expired</div>
-      )}
-
-      {!roomIsActive && (
-        <div style={{ marginTop: 12 }}>
-          {isHost ? (
-            <>
-              <div style={{ marginBottom: 10 }}>
-                Renewing will extend Party Mode for another <b>24 hours</b>.
-              </div>
-              <button
-                onClick={() => startCheckout({ mode: "renew" })}
-                disabled={busyPay}
-                style={styles.primaryBtn}
-              >
-                {busyPay ? "Opening checkout..." : "Renew for $5"}
-              </button>
-            </>
-          ) : (
-            <div style={{ marginTop: 10 }}>Ask the host to renew this room to continue the party.</div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-
-  const NowPlaying = () => {
-    const item = nowPlaying;
-    if (!item) {
-      return (
-        <div style={styles.card}>
-          <h3 style={{ marginTop: 0 }}>Now Playing (Room-wide)</h3>
-          <div>No track yet.</div>
-        </div>
+      const items = list || [];
+      const currentIndex = items.findIndex(
+        (x) => String(x.video_id || "").trim() === finishedVideoId
       );
+
+      const finished = currentIndex >= 0 ? items[currentIndex] : null;
+      const next = currentIndex >= 0 ? items[currentIndex + 1] : null;
+
+      if (finished?.id) {
+        const { error: deleteErr } = await supabase
+          .from("queue_items")
+          .delete()
+          .eq("id", finished.id);
+
+        if (deleteErr) {
+          console.warn("Auto-advance delete failed:", deleteErr);
+        }
+      }
+
+      if (!next?.video_id || !isValidYouTubeId(next.video_id)) {
+        if (isValidYouTubeId(finishedVideoId)) {
+          previousVideoIdRef.current = finishedVideoId;
+        }
+
+        setNowVideoId("");
+        setIsPlaying(false);
+        setHostTime(0);
+        setLocalTime(0);
+        setSeekTo(null);
+
+        await supabase
+          .from("rooms")
+          .update({
+            now_video_id: "",
+            now_playing: false,
+            now_time: 0,
+            now_updated_at: new Date().toISOString(),
+          })
+          .eq("id", room.id);
+
+        return;
+      }
+
+      await handleHostSetVideo(next.video_id);
+    } finally {
+      advancingRef.current = false;
     }
-
-    const provider = (item.provider || "").toLowerCase();
-    const youtubeSrc =
-      provider === "youtube" && item.track_id
-        ? `https://www.youtube.com/embed/${item.track_id}?autoplay=0&rel=0`
-        : null;
-
-    return (
-      <div style={styles.card}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3 style={{ marginTop: 0 }}>Now Playing (Room-wide)</h3>
-          <button onClick={nextTrack} disabled={!canControlQueue} style={styles.secondaryBtn}>
-            Next ▶
-          </button>
-        </div>
-
-        <div style={{ textAlign: "center", marginBottom: 10 }}>
-          <div style={{ fontWeight: 800 }}>{item.title || "Untitled"}</div>
-          <div style={{ opacity: 0.8 }}>{item.artist || ""}</div>
-        </div>
-
-        {youtubeSrc ? (
-          <div style={{ width: "100%", aspectRatio: "16 / 9", borderRadius: 12, overflow: "hidden" }}>
-            <iframe
-              title="now-playing"
-              src={youtubeSrc}
-              width="100%"
-              height="100%"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              style={{ border: 0 }}
-            />
-          </div>
-        ) : (
-          <div style={{ textAlign: "center", opacity: 0.75 }}>
-            (Embed not configured for provider: {provider || "unknown"})
-          </div>
-        )}
-      </div>
-    );
   };
+
+  const handleCopyLink = async () => {
+    const url = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
+
+    try {
+      await navigator.clipboard?.writeText(url);
+      alert("Share link copied.");
+    } catch {
+      window.prompt("Copy this room link:", url);
+    }
+  };
+
+  if (loading) {
+    return <div style={{ padding: 24 }}>Loading room...</div>;
+  }
+
+  if (!roomCode) {
+    return <div style={{ padding: 24 }}>Missing room code in URL.</div>;
+  }
 
   return (
-    <div style={styles.wrap}>
-      <div style={styles.header}>
+    <div style={{ padding: 24, maxWidth: 1100, margin: "0 auto" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
         <div>
-          <h1 style={styles.title}>Room</h1>
-          <div style={styles.metaRow}>
-            <div>
-              <b>Code:</b> {room?.code || ""}
-            </div>
-            <div>
-              <b>Party:</b> {roomIsActive ? "Active" : "Expired"}
-            </div>
-            <div>
-              <b>Role:</b> {isHost ? "Host" : "Guest"}
-            </div>
-          </div>
+          <h1 style={{ margin: 0 }}>Room</h1>
+          <div style={{ opacity: 0.8 }}>Code: {roomCode}</div>
         </div>
 
-        <div style={styles.headerBtns}>
-          <button onClick={copyShareLink} style={styles.secondaryBtn}>
-            Copy Share Link
-          </button>
-          <button onClick={onLeave} style={styles.secondaryBtn}>
-            Leave
-          </button>
-        </div>
+        <button
+          onClick={handleCopyLink}
+          style={{
+            padding: "10px 14px",
+            borderRadius: 10,
+            border: "1px solid #ddd",
+            background: "white",
+            cursor: "pointer",
+          }}
+        >
+          Copy Share Link
+        </button>
       </div>
 
-      {statusMsg ? <div style={styles.status}>{statusMsg}</div> : null}
+      <div
+        style={{
+          marginTop: 24,
+          display: "grid",
+          gridTemplateColumns: "1.2fr 0.8fr",
+          gap: 18,
+        }}
+      >
+        <div>
+          <h2 style={{ margin: "0 0 6px" }}>Room: {roomCode}</h2>
+          <div style={{ marginBottom: 12, opacity: 0.85 }}>
+            Your role: <b>{role}</b>{" "}
+            {isHost ? (
+              <span style={{ opacity: 0.7 }}>(one true host)</span>
+            ) : null}
+          </div>
 
-      <PartyModeCard />
+          <h3 style={{ margin: "18px 0 8px" }}>Now playing</h3>
+          <div style={{ marginBottom: 10, opacity: 0.8 }}>
+            {isHost
+              ? "You're the host — everyone stays synced to you."
+              : "Host controls playback."}
+          </div>
 
-      {/* ✅ Add Song */}
-      <div style={styles.card}>
-        <h3 style={{ marginTop: 0 }}>Add a Song</h3>
-        <div style={{ opacity: 0.8, marginBottom: 10 }}>
-          Paste a YouTube link (or video ID). Example: <span style={{ fontFamily: "monospace" }}>dQw4w9WgXcQ</span>
+          <div style={{ marginBottom: 10, opacity: 0.7 }}>
+            {isValidYouTubeId(nowVideoId)
+              ? `${nowVideoId} • ${Math.floor((isHost ? localTime : hostTime) || 0)}s`
+              : "No video selected"}
+          </div>
+
+          {isValidYouTubeId(nowVideoId) ? (
+            <YouTubePlayer
+              videoId={nowVideoId}
+              playing={isPlaying}
+              startSeconds={isHost ? 0 : hostTime}
+              seekTo={isHost ? null : seekTo}
+              muted={!isHost}
+              onTime={(t) => {
+                setLocalTime(t);
+              }}
+              onEnded={handleEnded}
+              onController={(ctrl) => {
+                playerCtrlRef.current = ctrl;
+              }}
+            />
+          ) : (
+            <div
+              style={{
+                width: "100%",
+                aspectRatio: "16/9",
+                background: "#000",
+                borderRadius: 12,
+              }}
+            />
+          )}
+
+          <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button
+              disabled={!isHost || !isValidYouTubeId(nowVideoId)}
+              onClick={handlePrevious}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "1px solid #ddd",
+                background: !isHost || !isValidYouTubeId(nowVideoId) ? "#f3f3f3" : "white",
+                cursor: !isHost || !isValidYouTubeId(nowVideoId) ? "not-allowed" : "pointer",
+              }}
+            >
+              Previous
+            </button>
+
+            <button
+              disabled={!isHost || !isValidYouTubeId(nowVideoId)}
+              onClick={handleHostPlay}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "1px solid #ddd",
+                background: !isHost || !isValidYouTubeId(nowVideoId) ? "#f3f3f3" : "white",
+                cursor: !isHost || !isValidYouTubeId(nowVideoId) ? "not-allowed" : "pointer",
+              }}
+            >
+              Play
+            </button>
+
+            <button
+              disabled={!isHost || !isValidYouTubeId(nowVideoId)}
+              onClick={handleHostPause}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "1px solid #ddd",
+                background: !isHost || !isValidYouTubeId(nowVideoId) ? "#f3f3f3" : "white",
+                cursor: !isHost || !isValidYouTubeId(nowVideoId) ? "not-allowed" : "pointer",
+              }}
+            >
+              Pause
+            </button>
+
+            <button
+              disabled={!isHost}
+              onClick={handleSkip}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "1px solid #ddd",
+                background: !isHost ? "#f3f3f3" : "white",
+                cursor: !isHost ? "not-allowed" : "pointer",
+              }}
+            >
+              Skip
+            </button>
+          </div>
         </div>
 
-        {!roomIsActive && (
-          <div style={{ color: "#b00020", marginBottom: 10 }}>
-            Room is expired — renew to add songs.
-          </div>
-        )}
-
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <input
-            value={songInput}
-            onChange={(e) => setSongInput(e.target.value)}
-            placeholder="YouTube URL or video ID"
-            style={styles.input}
-            disabled={!roomIsActive || adding}
-          />
-          <button
-            onClick={addSong}
-            disabled={!roomIsActive || adding}
-            style={styles.primaryBtn}
-          >
-            {adding ? "Adding..." : "Add"}
-          </button>
+        <div>
+          <QueuePanel roomId={room?.id} isHost={isHost} onPlay={handleHostSetVideo} />
         </div>
-      </div>
-
-      <NowPlaying />
-
-      {/* Queue */}
-      <div style={styles.card}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3 style={{ marginTop: 0 }}>Queue</h3>
-          <div style={{ opacity: 0.8, fontSize: 14 }}>
-            {loadingQueue ? "Loading..." : `${queue.length} track(s)`}
-          </div>
-        </div>
-
-        {!roomIsActive && (
-          <div style={{ color: "#b00020", marginBottom: 10 }}>
-            Queue controls are disabled because the room is expired.
-          </div>
-        )}
-
-        <ul style={{ listStyle: "none", paddingLeft: 0, margin: 0 }}>
-          {queue.map((item, idx) => (
-            <li key={item.id} style={styles.queueItem}>
-              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                {item.artwork_url ? (
-                  <img
-                    src={item.artwork_url}
-                    alt=""
-                    style={{ width: 44, height: 44, borderRadius: 10, objectFit: "cover" }}
-                  />
-                ) : (
-                  <div style={{ width: 44, height: 44, borderRadius: 10, background: "#eee" }} />
-                )}
-
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 800 }}>
-                    {idx === 0 ? "▶ " : ""}
-                    {item.title || "Untitled"}
-                  </div>
-                  <div style={{ opacity: 0.8 }}>{item.artist || ""}</div>
-                </div>
-
-                <button
-                  disabled={!canControlQueue}
-                  style={styles.dangerBtn}
-                  onClick={async () => {
-                    if (!canControlQueue) return;
-                    try {
-                      await supabase.from("queue_items").delete().eq("id", item.id);
-                    } catch (e) {
-                      setStatusMsg(`Delete failed: ${String(e.message ?? e)}`);
-                    }
-                  }}
-                >
-                  Delete
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-
-        {queue.length === 0 && <div style={{ opacity: 0.75 }}>No songs in the queue yet.</div>}
-      </div>
-
-      {/* Members */}
-      <div style={styles.card}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h3 style={{ marginTop: 0 }}>Members</h3>
-          <div style={{ opacity: 0.8, fontSize: 14 }}>
-            {loadingMembers ? "Loading..." : `${members.length} member(s)`}
-          </div>
-        </div>
-
-        <ul style={{ listStyle: "none", paddingLeft: 0, margin: 0 }}>
-          {members.map((m) => (
-            <li key={m.id} style={{ padding: "8px 0", borderBottom: "1px solid #eee" }}>
-              <div style={{ display: "flex", justifyContent: "space-between" }}>
-                <div style={{ fontFamily: "monospace", fontSize: 13, opacity: 0.9 }}>
-                  {m.user_id}
-                </div>
-                <div style={{ fontWeight: 800 }}>{m.role || ""}</div>
-              </div>
-            </li>
-          ))}
-        </ul>
-
-        {members.length === 0 && <div style={{ opacity: 0.75 }}>No members yet.</div>}
       </div>
     </div>
   );
 }
-
-const styles = {
-  wrap: { maxWidth: 900, margin: "40px auto", padding: "0 16px" },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 16,
-    marginBottom: 18,
-  },
-  title: { margin: 0, fontSize: 44, lineHeight: 1.1 },
-  metaRow: { display: "grid", gap: 6, marginTop: 10, fontSize: 16 },
-  headerBtns: { display: "flex", gap: 10 },
-  card: {
-    background: "white",
-    border: "1px solid #e9e9e9",
-    borderRadius: 14,
-    padding: 18,
-    marginBottom: 16,
-    boxShadow: "0 2px 10px rgba(0,0,0,0.04)",
-  },
-  status: {
-    background: "#f5f7ff",
-    border: "1px solid #dfe6ff",
-    borderRadius: 12,
-    padding: 10,
-    marginBottom: 12,
-  },
-  queueItem: { padding: "10px 0", borderBottom: "1px solid #eee" },
-  input: {
-    flex: 1,
-    minWidth: 240,
-    padding: "12px 12px",
-    borderRadius: 12,
-    border: "1px solid #ddd",
-    fontSize: 14,
-  },
-  primaryBtn: {
-    padding: "10px 14px",
-    borderRadius: 12,
-    border: "1px solid #111",
-    background: "#111",
-    color: "white",
-    cursor: "pointer",
-    fontWeight: 800,
-  },
-  secondaryBtn: {
-    padding: "10px 14px",
-    borderRadius: 12,
-    border: "1px solid #ddd",
-    background: "white",
-    cursor: "pointer",
-    fontWeight: 800,
-  },
-  dangerBtn: {
-    padding: "8px 12px",
-    borderRadius: 12,
-    border: "1px solid #ffb3b3",
-    background: "#fff5f5",
-    cursor: "pointer",
-    fontWeight: 800,
-  },
-};
