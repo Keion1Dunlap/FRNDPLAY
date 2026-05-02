@@ -2,41 +2,20 @@ import { useEffect, useState } from "react";
 import { supabase } from "./supabase";
 import RoomView from "./components/RoomView";
 
-const POST_LOGIN_REDIRECT_KEY = "frndplay_post_login_redirect";
+function makeCode(len = 6) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let out = "";
+
+  for (let i = 0; i < len; i += 1) {
+    out += chars[Math.floor(Math.random() * chars.length)];
+  }
+
+  return out;
+}
 
 function getRoomCodeFromUrl() {
   const params = new URLSearchParams(window.location.search);
   return (params.get("room") || "").trim().toUpperCase();
-}
-
-function getCurrentRelativeUrl() {
-  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
-}
-
-function restoreSavedRedirectIfNeeded(session) {
-  if (!session?.user) return false;
-
-  const savedRedirect = localStorage.getItem(POST_LOGIN_REDIRECT_KEY);
-  if (!savedRedirect) return false;
-
-  const currentRelative = getCurrentRelativeUrl();
-
-  if (currentRelative !== savedRedirect) {
-    window.location.replace(savedRedirect);
-    return true;
-  }
-
-  localStorage.removeItem(POST_LOGIN_REDIRECT_KEY);
-  return false;
-}
-
-function makeCode(len = 6) {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let out = "";
-  for (let i = 0; i < len; i += 1) {
-    out += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return out;
 }
 
 export default function App() {
@@ -63,42 +42,27 @@ export default function App() {
     let mounted = true;
 
     async function loadSession() {
-      try {
-        const {
-          data: { session },
-          error,
-        } = await supabase.auth.getSession();
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
 
-        if (error) {
-          console.error("getSession error:", error);
-        }
-
-        if (!mounted) return;
-
-        setSession(session ?? null);
-
-        const redirected = restoreSavedRedirectIfNeeded(session);
-        if (redirected) return;
-
-        setAuthLoading(false);
-      } catch (err) {
-        console.error("loadSession unexpected error:", err);
-        if (mounted) setAuthLoading(false);
+      if (error) {
+        console.error("getSession error:", error.message);
       }
+
+      if (!mounted) return;
+
+      setSession(session);
+      setAuthLoading(false);
     }
 
     loadSession();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, nextSession) => {
-      setSession(nextSession ?? null);
-
-      if (event === "SIGNED_IN") {
-        const redirected = restoreSavedRedirectIfNeeded(nextSession);
-        if (redirected) return;
-      }
-
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
       setAuthLoading(false);
     });
 
@@ -112,42 +76,29 @@ export default function App() {
     const normalized = String(code || "").trim().toUpperCase();
     if (!normalized) return;
 
-    const nextUrl = `/?room=${encodeURIComponent(normalized)}`;
-    window.location.assign(nextUrl);
+    window.location.assign(`/?room=${encodeURIComponent(normalized)}`);
   };
 
   const signInWithGoogle = async () => {
-    try {
-      const currentRelativeUrl = getCurrentRelativeUrl();
-      localStorage.setItem(POST_LOGIN_REDIRECT_KEY, currentRelativeUrl);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
 
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: window.location.origin,
-        },
-      });
-
-      if (error) {
-        console.error("Google sign-in error:", error);
-        alert(error.message);
-      }
-    } catch (err) {
-      console.error("Google sign-in unexpected error:", err);
-      alert(err.message || "Google sign-in failed.");
+    if (error) {
+      console.error("Google login error:", error.message);
+      alert(error.message);
     }
   };
 
   const signOut = async () => {
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        console.error("Sign-out error:", error);
-        alert(error.message);
-      }
-    } catch (err) {
-      console.error("Sign-out unexpected error:", err);
-      alert(err.message || "Sign-out failed.");
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      console.error("Sign out error:", error.message);
+      alert(error.message);
     }
   };
 
@@ -180,10 +131,13 @@ export default function App() {
           code,
           owner_id: session.user.id,
           host_user_id: session.user.id,
+          host_session_id: crypto?.randomUUID?.() || `${Date.now()}`,
           current_video_id: "",
           current_title: "",
           is_playing: false,
           playback_time: 0,
+          last_sync_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         };
 
         const { error } = await supabase.from("rooms").insert([payload]);
@@ -199,9 +153,7 @@ export default function App() {
           message.includes("unique") ||
           message.includes("already exists");
 
-        if (!isCollision) {
-          throw error;
-        }
+        if (!isCollision) throw error;
       }
 
       if (!createdRoomCode) {
@@ -228,20 +180,52 @@ export default function App() {
     );
   }
 
+  if (roomCode) {
+    return (
+      <div style={styles.page}>
+        <div style={styles.topBar}>
+          <div style={styles.brandBlock}>
+            <div style={styles.brand}>FRNDPLAY</div>
+            <div style={styles.subBrand}>Room: {roomCode}</div>
+          </div>
+
+          <div style={styles.authBlock}>
+            {session?.user ? (
+              <>
+                <div style={styles.userText}>
+                  {session.user.email || "Signed in"}
+                </div>
+                <button style={styles.secondaryButton} onClick={signOut}>
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <button style={styles.primaryButton} onClick={signInWithGoogle}>
+                Continue with Google
+              </button>
+            )}
+          </div>
+        </div>
+
+        <RoomView />
+      </div>
+    );
+  }
+
   return (
     <div style={styles.page}>
       <div style={styles.topBar}>
         <div style={styles.brandBlock}>
           <div style={styles.brand}>FRNDPLAY</div>
-          <div style={styles.subBrand}>
-            {roomCode ? `Room: ${roomCode}` : "Social listening"}
-          </div>
+          <div style={styles.subBrand}>Social listening</div>
         </div>
 
         <div style={styles.authBlock}>
           {session?.user ? (
             <>
-              <div style={styles.userText}>{session.user.email || "Signed in"}</div>
+              <div style={styles.userText}>
+                {session.user.email || "Signed in"}
+              </div>
               <button style={styles.secondaryButton} onClick={signOut}>
                 Sign out
               </button>
@@ -254,56 +238,54 @@ export default function App() {
         </div>
       </div>
 
-      {roomCode ? (
-        <RoomView />
-      ) : (
-        <div style={styles.card}>
-          <h1 style={styles.title}>Welcome to FRNDPLAY</h1>
-          <p style={styles.text}>
-            Create a room or join a room to start listening together.
-          </p>
+      <div style={styles.card}>
+        <h1 style={styles.title}>Welcome to FRNDPLAY</h1>
+        <p style={styles.text}>
+          Create a room or join a room to start listening together.
+        </p>
 
-          <div style={styles.actionsBlock}>
-            <div style={styles.sectionTitle}>Join a room</div>
-            <div style={styles.row}>
-              <input
-                type="text"
-                value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleJoinRoom();
-                }}
-                placeholder="Enter room code"
-                style={styles.input}
-                maxLength={12}
-              />
-              <button style={styles.primaryButtonLarge} onClick={handleJoinRoom}>
-                Join Room
-              </button>
-            </div>
+        <div style={styles.actionsBlock}>
+          <div style={styles.sectionTitle}>Join a room</div>
 
-            <div style={styles.divider} />
-
-            <div style={styles.sectionTitle}>Create a room</div>
-            <p style={styles.helperText}>
-              {session?.user
-                ? "Create a new listening room and jump straight in."
-                : "Sign in with Google to create a room."}
-            </p>
-
-            <button
-              style={{
-                ...styles.primaryButtonLarge,
-                ...(busy ? styles.disabledButton : {}),
+          <div style={styles.row}>
+            <input
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleJoinRoom();
               }}
-              onClick={handleCreateRoom}
-              disabled={busy}
-            >
-              {busy ? "Creating..." : "Create Room"}
+              placeholder="ENTER ROOM CODE"
+              style={styles.input}
+              maxLength={12}
+            />
+
+            <button style={styles.primaryButtonLarge} onClick={handleJoinRoom}>
+              Join Room
             </button>
           </div>
+
+          <div style={styles.divider} />
+
+          <div style={styles.sectionTitle}>Create a room</div>
+
+          <p style={styles.helperText}>
+            {session?.user
+              ? "Create a new listening room and jump straight in."
+              : "Sign in with Google to create a room."}
+          </p>
+
+          <button
+            style={{
+              ...styles.primaryButtonLarge,
+              ...(busy ? styles.disabledButton : {}),
+            }}
+            onClick={handleCreateRoom}
+            disabled={busy}
+          >
+            {busy ? "Creating..." : "Create Room"}
+          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -348,7 +330,7 @@ const styles = {
   },
   userText: {
     color: "white",
-    fontWeight: 600,
+    fontWeight: 700,
     fontSize: "0.95rem",
   },
   card: {
@@ -378,7 +360,7 @@ const styles = {
   },
   sectionTitle: {
     fontSize: "1.1rem",
-    fontWeight: 800,
+    fontWeight: 900,
     color: "#111827",
     marginBottom: "12px",
   },
@@ -417,7 +399,7 @@ const styles = {
     padding: "12px 18px",
     background: "#111827",
     color: "white",
-    fontWeight: 800,
+    fontWeight: 900,
     fontSize: "0.98rem",
     cursor: "pointer",
   },
@@ -437,7 +419,7 @@ const styles = {
     padding: "12px 18px",
     background: "#e5e7eb",
     color: "#111827",
-    fontWeight: 800,
+    fontWeight: 900,
     fontSize: "0.98rem",
     cursor: "pointer",
   },
