@@ -1,1007 +1,1415 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import YouTube from "react-youtube";
 import { supabase } from "../supabase";
-import YouTubePlayer from "./YouTubePlayer";
-import QueuePanel from "./QueuePanel";
-import RoomChat from "./RoomChat";
 
-function getRoomCodeFromUrl() {
-  try {
-    const url = new URL(window.location.href);
-    return (
-      url.searchParams.get("room") ||
-      url.searchParams.get("code") ||
-      url.searchParams.get("roomCode") ||
-      ""
-    )
-      .toUpperCase()
-      .trim();
-  } catch {
-    return "";
-  }
+const SYNC_PUSH_INTERVAL_MS = 1000;
+const GUEST_RECONCILE_INTERVAL_MS = 1500;
+const SEEK_THRESHOLD_SECONDS = 1.5;
+const PAUSED_SEEK_THRESHOLD_SECONDS = 0.5;
+const REMOTE_ACTION_LOCK_MS = 450;
+
+function getSessionId() {
+  const key = "frndplay_session_id";
+  let existing = localStorage.getItem(key);
+  if (existing) return existing;
+
+  const created =
+    crypto?.randomUUID?.() ||
+    `sess_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+  localStorage.setItem(key, created);
+  return created;
 }
 
-function isValidYouTubeId(value) {
-  return /^[a-zA-Z0-9_-]{11}$/.test(String(value || "").trim());
-}
-
-function toSafeNumber(value, fallback = 0) {
+function safeNum(value, fallback = 0) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
 }
 
-function formatParticipantLabel(p, hostUserId) {
-  const email = String(p?.email || "").trim().toLowerCase();
-  const short = email && email.includes("@") ? email.split("@")[0] : "guest";
-  const isHostParticipant =
-    p?.userId && hostUserId && String(p.userId) === String(hostUserId);
+function extractYouTubeId(input) {
+  const s = String(input || "").trim();
+  if (!s) return "";
 
-  return {
-    id: p?.presenceId || `${p?.userId || "anon"}-${short}`,
-    name: short,
-    isHost: !!isHostParticipant,
-  };
+  if (/^[a-zA-Z0-9_-]{11}$/.test(s)) return s;
+
+  try {
+    const url = new URL(s);
+    const v = url.searchParams.get("v");
+    if (v && /^[a-zA-Z0-9_-]{11}$/.test(v)) return v;
+
+    const parts = url.pathname.split("/").filter(Boolean);
+    const last = parts[parts.length - 1];
+    if (last && /^[a-zA-Z0-9_-]{11}$/.test(last)) return last;
+  } catch {
+    return "";
+  }
+
+  return "";
 }
 
-function useIsMobile(breakpoint = 900) {
-  const [isMobile, setIsMobile] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.innerWidth < breakpoint;
-  });
+function getYouTubeThumb(videoId) {
+  if (!videoId) return "";
+  return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+}
+async function getYouTubeTitle(videoId) {
+  try {
+    const url = `https://www.youtube.com/watch?v=${videoId}`;
+    const res = await fetch(
+      `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`
+    );
 
-  useEffect(() => {
-    const onResize = () => {
-      setIsMobile(window.innerWidth < breakpoint);
-    };
+    if (!res.ok) throw new Error("Title fetch failed");
 
-    onResize();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [breakpoint]);
+    const data = await res.json();
+    return data?.title || `YouTube Video (${videoId})`;
+  } catch {
+    return `YouTube Video (${videoId})`;
+  }
+}
+function projectHostPlaybackTime(room) {
+  const base = safeNum(room?.playback_time, 0);
+  if (!room?.is_playing) return base;
 
-  return isMobile;
+  const stamp = room?.last_sync_at || room?.updated_at;
+  if (!stamp) return base;
+
+  const elapsed = (Date.now() - new Date(stamp).getTime()) / 1000;
+  return Math.max(0, base + elapsed);
 }
 
-function getDefaultThumbnail(videoId) {
-  const id = String(videoId || "").trim();
-  return isValidYouTubeId(id)
-    ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg`
-    : "";
-}
-
-function fallbackTitle(videoId) {
-  const id = String(videoId || "").trim();
-  return id ? `YouTube Video (${id})` : "No track selected";
+function normalizeQueuePositions(items) {
+  return items.map((item, index) => ({
+    ...item,
+    position: index + 1,
+  }));
 }
 
 export default function RoomView() {
-  const roomCode = useMemo(() => getRoomCodeFromUrl(), []);
-  const [loading, setLoading] = useState(true);
+  const roomCode = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return (params.get("room") || "").trim().toUpperCase();
+  }, []);
 
-  const [session, setSession] = useState(null);
+  const sessionId = useMemo(() => getSessionId(), []);
+
   const [room, setRoom] = useState(null);
-  const [role, setRole] = useState("GUEST");
+  const [queue, setQueue] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [videoInput, setVideoInput] = useState("");
+  const [queueBusyId, setQueueBusyId] = useState(null);
+  const [playerReady, setPlayerReady] = useState(false);
+  const [playerVideoId, setPlayerVideoId] = useState("");
+  const [authUserId, setAuthUserId] = useState(null);
+  const [authUserEmail, setAuthUserEmail] = useState("");
 
-  const [nowVideoId, setNowVideoId] = useState("");
-  const [isPlaying, setIsPlaying] = useState(false);
-
-  const [hostTime, setHostTime] = useState(0);
-  const [localTime, setLocalTime] = useState(0);
-
-  const [seekTo, setSeekTo] = useState(null);
-  const [participants, setParticipants] = useState([]);
-  const [nowPlayingMeta, setNowPlayingMeta] = useState({
-    title: "",
-    thumbnail: "",
-    provider: "youtube",
-  });
-
-  const playerCtrlRef = useRef(null);
+  const playerRef = useRef(null);
+  const hostSyncIntervalRef = useRef(null);
+  const guestSyncIntervalRef = useRef(null);
+  const remoteActionLockRef = useRef(false);
   const advancingRef = useRef(false);
-  const isHostRef = useRef(false);
+  const roomRef = useRef(null);
+  const queueRef = useRef([]);
+  const playerVideoIdRef = useRef("");
+  const playerReadyRef = useRef(false);
 
-  const isMobile = useIsMobile(900);
-  const isHost = role === "HOST";
+  const isHost = useMemo(() => {
+    if (!room) return false;
 
-  useEffect(() => {
-    isHostRef.current = isHost;
-  }, [isHost]);
+    return (
+      room.owner_id === authUserId ||
+      room.host_user_id === authUserId ||
+      room.host_session_id === sessionId
+    );
+  }, [room, authUserId, sessionId]);
 
-  const getExactPlayerTime = () => {
-    const exact = playerCtrlRef.current?.getTime?.();
-    return Number.isFinite(exact) ? exact : localTime;
-  };
+  const currentVideoId = room?.current_video_id || "";
+  const currentTitle = room?.current_title || "Nothing playing";
+  const currentThumbnail = getYouTubeThumb(currentVideoId);
 
-  const getCurrentQueueMeta = async (videoId) => {
-    if (!room?.id || !isValidYouTubeId(videoId)) {
-      return {
-        title: "",
-        thumbnail: "",
-        provider: "youtube",
-      };
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from("queue_items")
-        .select("title, thumbnail, provider")
-        .eq("room_id", String(room.id))
-        .eq("video_id", String(videoId).trim())
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      if (error) throw error;
-
-      const item = data?.[0] || null;
-
-      return {
-        title: String(item?.title || "").trim(),
-        thumbnail: String(item?.thumbnail || "").trim(),
-        provider: String(item?.provider || "youtube").trim(),
-      };
-    } catch {
-      return {
-        title: "",
-        thumbnail: "",
-        provider: "youtube",
-      };
-    }
-  };
-
-  const refreshNowPlayingMeta = async (videoId) => {
-    if (!isValidYouTubeId(videoId)) {
-      setNowPlayingMeta({
-        title: "",
-        thumbnail: "",
-        provider: "youtube",
-      });
-      return;
-    }
-
-    const meta = await getCurrentQueueMeta(videoId);
-
-    setNowPlayingMeta({
-      title: meta.title || fallbackTitle(videoId),
-      thumbnail: meta.thumbnail || getDefaultThumbnail(videoId),
-      provider: meta.provider || "youtube",
-    });
-  };
-
-  const addToPlaybackHistory = async (videoId) => {
-    if (!room?.id || !isValidYouTubeId(videoId)) return;
-
-    try {
-      const meta = await getCurrentQueueMeta(videoId);
-
-      await supabase.from("playback_history").insert({
-        room_id: String(room.id),
-        video_id: String(videoId).trim(),
-        title: meta.title || null,
-        thumbnail: meta.thumbnail || null,
-      });
-    } catch (err) {
-      console.warn("Playback history insert failed:", err);
-    }
-  };
-
-  const getPreviousHistoryTrack = async () => {
-    if (!room?.id) return null;
-
-    try {
-      const currentId = String(nowVideoId || "").trim();
-
-      const { data, error } = await supabase
-        .from("playback_history")
-        .select("*")
-        .eq("room_id", String(room.id))
-        .order("played_at", { ascending: false })
-        .limit(10);
-
-      if (error) throw error;
-
-      const list = data || [];
-      if (list.length === 0) return null;
-
-      if (!currentId) {
-        return list[0] || null;
-      }
-
-      const previous = list.find(
-        (row) => String(row.video_id || "").trim() !== currentId
-      );
-
-      return previous || null;
-    } catch (err) {
-      console.warn("Previous history lookup failed:", err);
-      return null;
-    }
-  };
+  const youtubeOpts = useMemo(
+    () => ({
+      width: "100%",
+      height: "440",
+      playerVars: {
+        autoplay: 1,
+        controls: 1,
+        rel: 0,
+        modestbranding: 1,
+        playsinline: 1,
+      },
+    }),
+    []
+  );
 
   useEffect(() => {
-    let alive = true;
+    roomRef.current = room;
+  }, [room]);
 
-    async function initAuth() {
-      const { data } = await supabase.auth.getSession();
-      if (!alive) return;
-      setSession(data?.session ?? null);
+  useEffect(() => {
+    queueRef.current = queue;
+  }, [queue]);
+
+  useEffect(() => {
+    playerVideoIdRef.current = playerVideoId;
+  }, [playerVideoId]);
+
+  useEffect(() => {
+    playerReadyRef.current = playerReady;
+  }, [playerReady]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadSession() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!mounted) return;
+      setAuthUserId(session?.user?.id || null);
+      setAuthUserEmail(session?.user?.email || "");
     }
 
-    initAuth();
+    loadSession();
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_evt, next) => {
-      setSession(next ?? null);
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthUserId(session?.user?.id || null);
+      setAuthUserEmail(session?.user?.email || "");
     });
 
     return () => {
-      alive = false;
-      sub?.subscription?.unsubscribe?.();
+      mounted = false;
+      subscription.unsubscribe();
     };
   }, []);
 
-  useEffect(() => {
-    let alive = true;
+  const copyRoomLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      alert("Room link copied!");
+    } catch {
+      alert("Could not copy link. Copy it manually.");
+    }
+  }, []);
 
-    async function boot() {
-      setLoading(true);
+  const releaseRemoteActionLockSoon = useCallback(() => {
+    window.setTimeout(() => {
+      remoteActionLockRef.current = false;
+    }, REMOTE_ACTION_LOCK_MS);
+  }, []);
 
-      if (!roomCode) {
-        setLoading(false);
-        return;
+  const getPlayerTime = useCallback(() => {
+    try {
+      return safeNum(playerRef.current?.getCurrentTime?.(), 0);
+    } catch {
+      return 0;
+    }
+  }, []);
+
+  const getPlayerState = useCallback(() => {
+    try {
+      return playerRef.current?.getPlayerState?.();
+    } catch {
+      return -1;
+    }
+  }, []);
+
+  const updateRoomPlaybackState = useCallback(
+    async (patch) => {
+      if (!roomCode) return;
+
+      const nextRoom = roomRef.current
+        ? {
+            ...roomRef.current,
+            ...patch,
+            updated_at: new Date().toISOString(),
+          }
+        : null;
+
+      if (nextRoom) {
+        roomRef.current = nextRoom;
+        setRoom(nextRoom);
       }
 
-      const { data: rooms, error } = await supabase
+      const { error: updateError } = await supabase
+        .from("rooms")
+        .update({
+          ...patch,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("code", roomCode);
+
+      if (updateError) {
+        console.error("updateRoomPlaybackState error:", updateError);
+        throw updateError;
+      }
+    },
+    [roomCode]
+  );
+
+  const fetchQueue = useCallback(async () => {
+    if (!roomRef.current?.id) return [];
+
+    const { data, error: fetchError } = await supabase
+      .from("room_queue")
+      .select("*")
+      .eq("room_id", roomRef.current.id)
+      .order("position", { ascending: true });
+
+    if (fetchError) {
+      console.error("fetchQueue error:", fetchError);
+      return [];
+    }
+
+    return data || [];
+  }, []);
+
+  const loadRoom = useCallback(async () => {
+    if (!roomCode) return;
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const { data, error: roomErr } = await supabase
         .from("rooms")
         .select("*")
         .eq("code", roomCode)
-        .limit(1);
+        .maybeSingle();
 
-      if (!alive) return;
+      if (roomErr) throw roomErr;
 
-      if (error) {
-        console.error("Fetch room error:", error);
-        setLoading(false);
+      if (!data) {
+        setRoom(null);
+        setQueue([]);
+        setError("Room not found.");
         return;
       }
 
-      const r = rooms?.[0] || null;
-      if (!r) {
-        console.error("Room not found for code:", roomCode);
-        setLoading(false);
-        return;
-      }
+      setRoom(data);
+      roomRef.current = data;
+      setPlayerVideoId(data.current_video_id || "");
 
-      const t = toSafeNumber(r.now_time, 0);
-
-      setRoom(r);
-      setNowVideoId(String(r.now_video_id || "").trim());
-      setIsPlaying(!!r.now_playing);
-      setHostTime(t);
-      setLocalTime(t);
-
-      if (String(r.now_video_id || "").trim()) {
-        await refreshNowPlayingMeta(String(r.now_video_id || "").trim());
-      }
-
+      const queueData = await fetchQueue();
+      setQueue(queueData);
+      queueRef.current = queueData;
+    } catch (err) {
+      console.error("loadRoom error:", err);
+      setError(err.message || "Failed to load room.");
+    } finally {
       setLoading(false);
     }
+  }, [fetchQueue, roomCode]);
 
-    boot();
+  const ensureHostFields = useCallback(async () => {
+    const activeRoom = roomRef.current;
+    if (!activeRoom || !authUserId) return;
 
-    return () => {
-      alive = false;
-    };
-  }, [roomCode]);
+    const userOwnsRoom = activeRoom.owner_id === authUserId;
+    if (!userOwnsRoom) return;
 
-  useEffect(() => {
-    if (!room?.id) return;
+    const patch = {};
+    let shouldUpdate = false;
 
-    const userId = session?.user?.id || null;
+    if (!activeRoom.host_user_id) {
+      patch.host_user_id = authUserId;
+      shouldUpdate = true;
+    }
 
-    if (!userId) {
-      setRole("GUEST");
+    if (!activeRoom.host_session_id) {
+      patch.host_session_id = sessionId;
+      shouldUpdate = true;
+    }
+
+    if (!shouldUpdate) return;
+
+    const { error: hostError } = await supabase
+      .from("rooms")
+      .update(patch)
+      .eq("code", roomCode);
+
+    if (hostError) {
+      console.error("ensureHostFields error:", hostError);
+    }
+  }, [authUserId, roomCode, sessionId]);
+
+  const pushHostState = useCallback(async () => {
+    const activeRoom = roomRef.current;
+    if (!isHost || !playerRef.current || !activeRoom?.current_video_id) return;
+
+    const playerState = getPlayerState();
+    const isPlayingNow = playerState === 1;
+    const currentTime = getPlayerTime();
+
+    try {
+      await updateRoomPlaybackState({
+        current_video_id: activeRoom.current_video_id || "",
+        current_title: activeRoom.current_title || "",
+        is_playing: isPlayingNow,
+        playback_time: currentTime,
+        last_sync_at: new Date().toISOString(),
+        host_session_id: sessionId,
+        ...(authUserId ? { host_user_id: authUserId } : {}),
+      });
+    } catch (err) {
+      console.error("pushHostState error:", err);
+    }
+  }, [
+    authUserId,
+    getPlayerState,
+    getPlayerTime,
+    isHost,
+    sessionId,
+    updateRoomPlaybackState,
+  ]);
+
+  const startHostSyncLoop = useCallback(() => {
+    if (hostSyncIntervalRef.current) {
+      clearInterval(hostSyncIntervalRef.current);
+      hostSyncIntervalRef.current = null;
+    }
+
+    if (!isHost) return;
+
+    hostSyncIntervalRef.current = window.setInterval(() => {
+      pushHostState();
+    }, SYNC_PUSH_INTERVAL_MS);
+  }, [isHost, pushHostState]);
+
+  const stopHostSyncLoop = useCallback(() => {
+    if (hostSyncIntervalRef.current) {
+      clearInterval(hostSyncIntervalRef.current);
+      hostSyncIntervalRef.current = null;
+    }
+  }, []);
+
+  const reconcileGuestToHost = useCallback(() => {
+    const activeRoom = roomRef.current;
+    if (isHost || !playerRef.current || !activeRoom?.current_video_id) return;
+
+    const projectedTime = projectHostPlaybackTime(activeRoom);
+    const localTime = getPlayerTime();
+    const drift = Math.abs(projectedTime - localTime);
+
+    const localState = getPlayerState();
+    const localIsPlaying = localState === 1;
+    const hostIsPlaying = !!activeRoom.is_playing;
+    const roomVideoId = activeRoom.current_video_id || "";
+
+    if (roomVideoId && roomVideoId !== playerVideoIdRef.current) {
+      setPlayerVideoId(roomVideoId);
       return;
     }
 
-    if (room.host_user_id) {
-      setRole(room.host_user_id === userId ? "HOST" : "GUEST");
+    if (hostIsPlaying !== localIsPlaying) {
+      remoteActionLockRef.current = true;
+
+      if (hostIsPlaying) {
+        playerRef.current.playVideo?.();
+      } else {
+        playerRef.current.pauseVideo?.();
+      }
+
+      releaseRemoteActionLockSoon();
+    }
+
+    if (drift > SEEK_THRESHOLD_SECONDS) {
+      remoteActionLockRef.current = true;
+      playerRef.current.seekTo?.(projectedTime, true);
+      releaseRemoteActionLockSoon();
       return;
     }
 
-    let cancelled = false;
+    if (!hostIsPlaying && drift > PAUSED_SEEK_THRESHOLD_SECONDS) {
+      remoteActionLockRef.current = true;
+      playerRef.current.seekTo?.(projectedTime, true);
+      releaseRemoteActionLockSoon();
+    }
+  }, [getPlayerState, getPlayerTime, isHost, releaseRemoteActionLockSoon]);
 
-    (async () => {
-      const { data, error } = await supabase
-        .from("rooms")
-        .update({ host_user_id: userId })
-        .eq("id", room.id)
-        .is("host_user_id", null)
-        .select()
+  const startGuestSyncLoop = useCallback(() => {
+    if (guestSyncIntervalRef.current) {
+      clearInterval(guestSyncIntervalRef.current);
+      guestSyncIntervalRef.current = null;
+    }
+
+    if (isHost) return;
+
+    guestSyncIntervalRef.current = window.setInterval(() => {
+      reconcileGuestToHost();
+    }, GUEST_RECONCILE_INTERVAL_MS);
+  }, [isHost, reconcileGuestToHost]);
+
+  const stopGuestSyncLoop = useCallback(() => {
+    if (guestSyncIntervalRef.current) {
+      clearInterval(guestSyncIntervalRef.current);
+      guestSyncIntervalRef.current = null;
+    }
+  }, []);
+
+  const renumberQueueInDb = useCallback(async (items) => {
+    const normalized = normalizeQueuePositions(items);
+
+    if (!normalized.length) return normalized;
+
+    for (const [index, item] of normalized.entries()) {
+      const tempPosition = 100000 + index;
+
+      const { error: tempError } = await supabase
+        .from("room_queue")
+        .update({ position: tempPosition })
+        .eq("id", item.id);
+
+      if (tempError) throw tempError;
+    }
+
+    for (const item of normalized) {
+      const { error: positionError } = await supabase
+        .from("room_queue")
+        .update({ position: item.position })
+        .eq("id", item.id);
+
+      if (positionError) throw positionError;
+    }
+
+    return normalized;
+  }, []);
+
+  const playQueueItemNow = useCallback(
+    async (item) => {
+      if (!isHost || !item || advancingRef.current) return;
+
+      advancingRef.current = true;
+      setQueueBusyId(item.id);
+
+      try {
+        setPlayerVideoId(item.video_id);
+
+        const optimisticRoomPatch = {
+          current_video_id: item.video_id,
+          current_title: item.title || "Untitled",
+          is_playing: true,
+          playback_time: 0,
+          last_sync_at: new Date().toISOString(),
+          host_session_id: sessionId,
+          ...(authUserId ? { host_user_id: authUserId } : {}),
+        };
+
+        setRoom((prev) => (prev ? { ...prev, ...optimisticRoomPatch } : prev));
+        roomRef.current = roomRef.current
+          ? { ...roomRef.current, ...optimisticRoomPatch }
+          : roomRef.current;
+
+        await updateRoomPlaybackState(optimisticRoomPatch);
+
+        const { error: deleteError } = await supabase
+          .from("room_queue")
+          .delete()
+          .eq("id", item.id);
+
+        if (deleteError) throw deleteError;
+
+        const remaining = queueRef.current.filter((q) => q.id !== item.id);
+        const normalized = await renumberQueueInDb(remaining);
+
+        setQueue(normalized);
+        queueRef.current = normalized;
+      } catch (err) {
+        console.error("playQueueItemNow error:", err);
+        alert(err.message || "Failed to play queue item.");
+      } finally {
+        setQueueBusyId(null);
+        advancingRef.current = false;
+      }
+    },
+    [authUserId, isHost, renumberQueueInDb, sessionId, updateRoomPlaybackState]
+  );
+
+  const advanceToNextTrack = useCallback(async () => {
+    if (!isHost || advancingRef.current) return;
+
+    const currentQueue = queueRef.current || [];
+    const next = currentQueue[0];
+
+    if (!next) {
+      try {
+        await updateRoomPlaybackState({
+          is_playing: false,
+          playback_time: 0,
+          last_sync_at: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.error("advanceToNextTrack error:", err);
+      }
+      return;
+    }
+
+    await playQueueItemNow(next);
+  }, [isHost, playQueueItemNow, updateRoomPlaybackState]);
+
+  const removeQueueItem = useCallback(
+    async (itemId) => {
+      if (!isHost || !itemId) return;
+
+      setQueueBusyId(itemId);
+
+      try {
+        const currentQueue = queueRef.current || [];
+        const filtered = currentQueue.filter((item) => item.id !== itemId);
+
+        const { error: deleteError } = await supabase
+          .from("room_queue")
+          .delete()
+          .eq("id", itemId);
+
+        if (deleteError) throw deleteError;
+
+        const normalized = await renumberQueueInDb(filtered);
+        setQueue(normalized);
+        queueRef.current = normalized;
+      } catch (err) {
+        console.error("removeQueueItem error:", err);
+        alert(err.message || "Failed to remove queue item.");
+      } finally {
+        setQueueBusyId(null);
+      }
+    },
+    [isHost, renumberQueueInDb]
+  );
+
+  const moveQueueItem = useCallback(
+    async (item, direction) => {
+      if (!isHost || !item) return;
+
+      const currentQueue = [...(queueRef.current || [])];
+      const currentIndex = currentQueue.findIndex((q) => q.id === item.id);
+      if (currentIndex === -1) return;
+
+      const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+      if (targetIndex < 0 || targetIndex >= currentQueue.length) return;
+
+      const reordered = [...currentQueue];
+      const [moved] = reordered.splice(currentIndex, 1);
+      reordered.splice(targetIndex, 0, moved);
+
+      const optimistic = normalizeQueuePositions(reordered);
+      setQueue(optimistic);
+      queueRef.current = optimistic;
+
+      try {
+        const normalized = await renumberQueueInDb(optimistic);
+        setQueue(normalized);
+        queueRef.current = normalized;
+      } catch (err) {
+        console.error("moveQueueItem error:", err);
+        alert(err.message || "Failed to move queue item.");
+        loadRoom();
+      }
+    },
+    [isHost, loadRoom, renumberQueueInDb]
+  );
+
+  const addVideoToQueue = useCallback(async () => {
+    const videoId = extractYouTubeId(videoInput);
+
+    if (!videoId) {
+      alert("Paste a valid YouTube URL or video ID.");
+      return;
+    }
+
+    if (!roomRef.current?.id) {
+      alert("Room is not ready yet.");
+      return;
+    }
+
+    try {
+      const { data: existing, error: fetchError } = await supabase
+        .from("room_queue")
+        .select("position")
+        .eq("room_id", roomRef.current.id)
+        .order("position", { ascending: false })
         .limit(1);
 
-      if (cancelled) return;
+      if (fetchError) throw fetchError;
 
-      if (error) {
-        console.warn("Host claim failed:", error);
-        setRole("GUEST");
+      const highestPosition = existing?.[0]?.position || 0;
+      const nextPosition = highestPosition + 1;
+
+      const videoTitle = await getYouTubeTitle(videoId);
+
+const payload = {
+  room_id: roomRef.current.id,
+  video_id: videoId,
+  title: videoTitle,
+  added_by: authUserId || sessionId,
+  added_by_name: authUserEmail || "Guest",
+  position: nextPosition,
+};
+
+      const { error: insertError } = await supabase
+        .from("room_queue")
+        .insert([payload]);
+
+      if (insertError) throw insertError;
+
+      setVideoInput("");
+    } catch (err) {
+      console.error("addVideoToQueue error:", err);
+      alert(err.message || "Failed to add video.");
+    }
+  }, [authUserEmail, authUserId, sessionId, videoInput]);
+
+  const handlePlayerReady = useCallback(
+    (event) => {
+      playerRef.current = event.target;
+      setPlayerReady(true);
+
+      if (isHost) {
+        event.target.unMute?.();
+      } else {
+        event.target.mute?.();
+      }
+
+      const activeRoom = roomRef.current;
+      if (!activeRoom) return;
+
+      const roomVideoId = activeRoom.current_video_id || "";
+      if (roomVideoId && roomVideoId !== playerVideoIdRef.current) {
+        setPlayerVideoId(roomVideoId);
+      }
+
+      window.setTimeout(() => {
+        const latestRoom = roomRef.current;
+        if (!latestRoom || !playerRef.current) return;
+
+        if (isHost) {
+          playerRef.current.unMute?.();
+        } else {
+          playerRef.current.mute?.();
+        }
+
+        if (isHost) {
+          const roomTime = safeNum(latestRoom.playback_time, 0);
+          playerRef.current.seekTo?.(roomTime, true);
+
+          if (latestRoom.is_playing) {
+            playerRef.current.playVideo?.();
+          } else {
+            playerRef.current.pauseVideo?.();
+          }
+        } else {
+          const projected = projectHostPlaybackTime(latestRoom);
+          playerRef.current.seekTo?.(projected, true);
+
+          if (latestRoom.is_playing) {
+            playerRef.current.playVideo?.();
+          } else {
+            playerRef.current.pauseVideo?.();
+          }
+        }
+      }, 250);
+    },
+    [isHost]
+  );
+
+  const handlePlayerStateChange = useCallback(
+    async (event) => {
+      const activeRoom = roomRef.current;
+      if (!activeRoom || !playerRef.current) return;
+
+      const ytState = event.data;
+
+      if (!isHost) {
+        if (remoteActionLockRef.current) return;
+
+        if (ytState === 1 || ytState === 2) {
+          reconcileGuestToHost();
+        }
         return;
       }
 
-      const updated = data?.[0] || null;
+      if (remoteActionLockRef.current) return;
 
-      if (updated?.host_user_id === userId) {
-        setRoom(updated);
-        setRole("HOST");
-      } else {
-        setRole("GUEST");
+      try {
+        if (ytState === 1) {
+          await updateRoomPlaybackState({
+            is_playing: true,
+            playback_time: getPlayerTime(),
+            last_sync_at: new Date().toISOString(),
+            host_session_id: sessionId,
+            ...(authUserId ? { host_user_id: authUserId } : {}),
+          });
+        } else if (ytState === 2) {
+          await updateRoomPlaybackState({
+            is_playing: false,
+            playback_time: getPlayerTime(),
+            last_sync_at: new Date().toISOString(),
+            host_session_id: sessionId,
+            ...(authUserId ? { host_user_id: authUserId } : {}),
+          });
+        } else if (ytState === 0) {
+          await advanceToNextTrack();
+        }
+      } catch (err) {
+        console.error("handlePlayerStateChange error:", err);
       }
-    })();
+    },
+    [
+      advanceToNextTrack,
+      authUserId,
+      getPlayerTime,
+      isHost,
+      reconcileGuestToHost,
+      sessionId,
+      updateRoomPlaybackState,
+    ]
+  );
 
-    return () => {
-      cancelled = true;
-    };
-  }, [room?.id, room?.host_user_id, session?.user?.id]);
+  const handleHostPlay = useCallback(() => {
+    if (!isHost || !playerRef.current || !currentVideoId) return;
+    playerRef.current.unMute?.();
+    playerRef.current.playVideo?.();
+  }, [currentVideoId, isHost]);
+
+  const handleHostPause = useCallback(() => {
+    if (!isHost || !playerRef.current || !currentVideoId) return;
+    playerRef.current.pauseVideo?.();
+  }, [currentVideoId, isHost]);
+
+  const handleResync = useCallback(async () => {
+    if (isHost) {
+      await pushHostState();
+    } else {
+      reconcileGuestToHost();
+    }
+  }, [isHost, pushHostState, reconcileGuestToHost]);
 
   useEffect(() => {
-    if (!room?.id) return;
-
-    const presenceChannel = supabase.channel(`presence:room:${room.id}`, {
-      config: {
-        presence: {
-          key: session?.user?.id || `anon-${Math.random().toString(36).slice(2)}`,
-        },
-      },
-    });
-
-    const syncParticipants = () => {
-      const state = presenceChannel.presenceState();
-      const flat = Object.values(state).flatMap((entries) => entries || []);
-
-      const mapped = flat.map((entry) =>
-        formatParticipantLabel(
-          {
-            presenceId: entry.presenceId,
-            userId: entry.userId,
-            email: entry.email,
-          },
-          room?.host_user_id
-        )
-      );
-
-      const deduped = [];
-      const seen = new Set();
-
-      for (const p of mapped) {
-        if (seen.has(p.id)) continue;
-        seen.add(p.id);
-        deduped.push(p);
-      }
-
-      deduped.sort((a, b) => {
-        if (a.isHost && !b.isHost) return -1;
-        if (!a.isHost && b.isHost) return 1;
-        return a.name.localeCompare(b.name);
-      });
-
-      setParticipants(deduped);
-    };
-
-    presenceChannel
-      .on("presence", { event: "sync" }, syncParticipants)
-      .on("presence", { event: "join" }, syncParticipants)
-      .on("presence", { event: "leave" }, syncParticipants);
-
-    presenceChannel.subscribe(async (status) => {
-      if (status === "SUBSCRIBED") {
-        await presenceChannel.track({
-          presenceId:
-            session?.user?.id ||
-            `anon-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          userId: session?.user?.id || null,
-          email: session?.user?.email || "guest@frndplay.local",
-          roomCode,
-          joinedAt: new Date().toISOString(),
-        });
-      }
-    });
+    loadRoom();
 
     return () => {
-      supabase.removeChannel(presenceChannel);
+      stopHostSyncLoop();
+      stopGuestSyncLoop();
     };
-  }, [room?.id, room?.host_user_id, roomCode, session?.user?.email, session?.user?.id]);
+  }, [loadRoom, stopGuestSyncLoop, stopHostSyncLoop]);
 
   useEffect(() => {
-    if (!room?.id) return;
+    if (!room || !authUserId) return;
+    ensureHostFields();
+  }, [ensureHostFields, room, authUserId]);
 
-    const channel = supabase
-      .channel(`room:${room.id}`)
+  useEffect(() => {
+    if (!room) return;
+
+    if (isHost) {
+      startHostSyncLoop();
+      stopGuestSyncLoop();
+    } else {
+      stopHostSyncLoop();
+      startGuestSyncLoop();
+    }
+
+    return () => {
+      stopHostSyncLoop();
+      stopGuestSyncLoop();
+    };
+  }, [
+    isHost,
+    room,
+    startGuestSyncLoop,
+    startHostSyncLoop,
+    stopGuestSyncLoop,
+    stopHostSyncLoop,
+  ]);
+
+  useEffect(() => {
+    if (!roomCode || !room?.id) return;
+
+    const roomChannel = supabase
+      .channel(`room-state-${roomCode}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: "rooms",
-          filter: `id=eq.${room.id}`,
+          filter: `code=eq.${roomCode}`,
         },
-        async (payload) => {
-          const next = payload?.new;
-          if (!next) return;
+        (payload) => {
+          const nextRoom = payload.new;
+          if (!nextRoom) return;
 
-          const nextVideoId = String(next.now_video_id || "").trim();
-          const nextPlaying = !!next.now_playing;
-          const nextTime = toSafeNumber(next.now_time, 0);
+          setRoom(nextRoom);
+          roomRef.current = nextRoom;
 
-          setRoom(next);
-          setNowVideoId(nextVideoId);
-          setIsPlaying(nextPlaying);
-          setHostTime(nextTime);
-
-          if (nextVideoId) {
-            refreshNowPlayingMeta(nextVideoId);
-          } else {
-            setNowPlayingMeta({
-              title: "",
-              thumbnail: "",
-              provider: "youtube",
-            });
-          }
-
-          if (!isHostRef.current) {
-            const playerTime = playerCtrlRef.current?.getTime?.();
-            const currentGuestTime = Number.isFinite(playerTime)
-              ? playerTime
-              : localTime;
-
-            const drift = Math.abs(currentGuestTime - nextTime);
-            const shouldSnap =
-              !isValidYouTubeId(nextVideoId) ||
-              !Number.isFinite(currentGuestTime) ||
-              drift > 1.25 ||
-              nextPlaying === false;
-
-            if (shouldSnap) {
-              setSeekTo(nextTime);
-              setLocalTime(nextTime);
-            }
+          const nextVideoId = nextRoom.current_video_id || "";
+          if (nextVideoId !== playerVideoIdRef.current) {
+            setPlayerVideoId(nextVideoId);
           }
         }
       )
       .subscribe();
 
+    const queueChannel = supabase
+      .channel(`room-queue-${room.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "room_queue",
+          filter: `room_id=eq.${room.id}`,
+        },
+        async () => {
+          const latest = await fetchQueue();
+          setQueue(latest);
+          queueRef.current = latest;
+        }
+      )
+      .subscribe();
+
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(roomChannel);
+      supabase.removeChannel(queueChannel);
     };
-  }, [room?.id, localTime]);
+  }, [fetchQueue, room?.id, roomCode]);
 
   useEffect(() => {
-    if (!room?.id || !isHost) return;
-    if (!isValidYouTubeId(nowVideoId)) return;
-    if (!isPlaying) return;
+    if (!playerRef.current) return;
 
-    const interval = setInterval(async () => {
-      const exact = getExactPlayerTime();
-      setLocalTime(exact);
-      setHostTime(exact);
+    if (isHost) {
+      playerRef.current.unMute?.();
+    } else {
+      playerRef.current.mute?.();
+    }
+  }, [isHost, playerVideoId]);
 
-      try {
-        await supabase
-          .from("rooms")
-          .update({
-            now_video_id: nowVideoId,
-            now_playing: true,
-            now_time: exact,
-            now_updated_at: new Date().toISOString(),
-          })
-          .eq("id", room.id);
-      } catch (err) {
-        console.warn("Heartbeat update failed:", err);
-      }
-    }, 1200);
+  useEffect(() => {
+    if (!playerReadyRef.current || !playerRef.current) return;
+    if (!room?.current_video_id) return;
 
-    return () => clearInterval(interval);
-  }, [room?.id, isHost, nowVideoId, isPlaying]);
-
-  const handleHostSetVideo = async (videoId, options = {}) => {
-    if (!room?.id || !isHost) return;
-
-    const id = String(videoId || "").trim();
-    if (!isValidYouTubeId(id)) {
-      console.warn("Refusing to play invalid video id:", id);
+    if (room.current_video_id !== playerVideoIdRef.current) {
+      setPlayerVideoId(room.current_video_id);
       return;
     }
 
-    const shouldWriteHistory = options.writeHistory !== false;
-
-    if (shouldWriteHistory) {
-      await addToPlaybackHistory(id);
+    if (!isHost) {
+      reconcileGuestToHost();
     }
-
-    const meta = await getCurrentQueueMeta(id);
-
-    setNowVideoId(id);
-    setNowPlayingMeta({
-      title: meta.title || fallbackTitle(id),
-      thumbnail: meta.thumbnail || getDefaultThumbnail(id),
-      provider: meta.provider || "youtube",
-    });
-    setIsPlaying(true);
-    setHostTime(0);
-    setLocalTime(0);
-    setSeekTo(0);
-
-    playerCtrlRef.current?.load?.(id, 0);
-
-    setTimeout(() => {
-      playerCtrlRef.current?.play?.();
-    }, 120);
-
-    await supabase
-      .from("rooms")
-      .update({
-        now_video_id: id,
-        now_playing: true,
-        now_time: 0,
-        now_updated_at: new Date().toISOString(),
-      })
-      .eq("id", room.id);
-  };
-
-  const handleHostPlay = async () => {
-    if (!room?.id || !isHost || !isValidYouTubeId(nowVideoId)) return;
-
-    const exact = getExactPlayerTime();
-
-    setLocalTime(exact);
-    setHostTime(exact);
-    setIsPlaying(true);
-
-    playerCtrlRef.current?.seek?.(exact);
-    playerCtrlRef.current?.play?.();
-
-    await supabase
-      .from("rooms")
-      .update({
-        now_playing: true,
-        now_time: exact,
-        now_updated_at: new Date().toISOString(),
-      })
-      .eq("id", room.id);
-  };
-
-  const handleHostPause = async () => {
-    if (!room?.id || !isHost || !isValidYouTubeId(nowVideoId)) return;
-
-    const exact = getExactPlayerTime();
-
-    setLocalTime(exact);
-    setHostTime(exact);
-    setIsPlaying(false);
-
-    playerCtrlRef.current?.seek?.(exact);
-    playerCtrlRef.current?.pause?.();
-
-    await supabase
-      .from("rooms")
-      .update({
-        now_playing: false,
-        now_time: exact,
-        now_updated_at: new Date().toISOString(),
-      })
-      .eq("id", room.id);
-  };
-
-  const handleSkip = async () => {
-    if (!room?.id || !isHost) return;
-    await handleEnded();
-  };
-
-  const handlePrevious = async () => {
-    if (!room?.id || !isHost || !isValidYouTubeId(nowVideoId)) return;
-
-    const exact = getExactPlayerTime();
-
-    if (exact > 3) {
-      setLocalTime(0);
-      setHostTime(0);
-      setSeekTo(0);
-
-      playerCtrlRef.current?.seek?.(0);
-
-      if (isPlaying) {
-        playerCtrlRef.current?.play?.();
-      } else {
-        playerCtrlRef.current?.pause?.();
-      }
-
-      await supabase
-        .from("rooms")
-        .update({
-          now_time: 0,
-          now_updated_at: new Date().toISOString(),
-        })
-        .eq("id", room.id);
-
-      return;
-    }
-
-    const previous = await getPreviousHistoryTrack();
-    const previousId = String(previous?.video_id || "").trim();
-
-    if (!isValidYouTubeId(previousId)) return;
-
-    await handleHostSetVideo(previousId, { writeHistory: false });
-  };
-
-  const handleEnded = async () => {
-    if (!room?.id || !isHost) return;
-    if (advancingRef.current) return;
-
-    advancingRef.current = true;
-
-    try {
-      const finishedVideoId = String(nowVideoId || "").trim();
-
-      const { data: list, error } = await supabase
-        .from("queue_items")
-        .select("*")
-        .eq("room_id", String(room.id))
-        .order("position", { ascending: true });
-
-      if (error) {
-        console.warn("Auto-advance load error:", error);
-        return;
-      }
-
-      const items = list || [];
-      const currentIndex = items.findIndex(
-        (x) => String(x.video_id || "").trim() === finishedVideoId
-      );
-
-      const finished = currentIndex >= 0 ? items[currentIndex] : null;
-      const next = currentIndex >= 0 ? items[currentIndex + 1] : null;
-
-      if (finished?.id) {
-        const { error: deleteErr } = await supabase
-          .from("queue_items")
-          .delete()
-          .eq("id", finished.id);
-
-        if (deleteErr) {
-          console.warn("Auto-advance delete failed:", deleteErr);
-        }
-      }
-
-      if (!next?.video_id || !isValidYouTubeId(next.video_id)) {
-        setNowVideoId("");
-        setNowPlayingMeta({
-          title: "",
-          thumbnail: "",
-          provider: "youtube",
-        });
-        setIsPlaying(false);
-        setHostTime(0);
-        setLocalTime(0);
-        setSeekTo(null);
-
-        await supabase
-          .from("rooms")
-          .update({
-            now_video_id: "",
-            now_playing: false,
-            now_time: 0,
-            now_updated_at: new Date().toISOString(),
-          })
-          .eq("id", room.id);
-
-        return;
-      }
-
-      await handleHostSetVideo(next.video_id);
-    } finally {
-      advancingRef.current = false;
-    }
-  };
-
-  const handleCopyLink = async () => {
-    const url = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
-
-    try {
-      await navigator.clipboard?.writeText(url);
-      alert("Share link copied.");
-    } catch {
-      window.prompt("Copy this room link:", url);
-    }
-  };
-
-  if (loading) {
-    return <div style={{ padding: 24 }}>Loading room...</div>;
-  }
+  }, [isHost, reconcileGuestToHost, room]);
 
   if (!roomCode) {
-    return <div style={{ padding: 24 }}>Missing room code in URL.</div>;
+    return (
+      <div style={styles.page}>
+        <div style={styles.statusCard}>Missing room code.</div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div style={styles.page}>
+        <div style={styles.statusCard}>Loading room...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={styles.page}>
+        <div style={styles.statusCard}>{error}</div>
+      </div>
+    );
   }
 
   return (
-    <div
-      style={{
-        padding: isMobile ? 14 : 24,
-        maxWidth: 1100,
-        margin: "0 auto",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: isMobile ? "stretch" : "center",
-          justifyContent: "space-between",
-          gap: 12,
-          flexWrap: "wrap",
-          flexDirection: isMobile ? "column" : "row",
-        }}
-      >
-        <div>
-          <h1 style={{ margin: 0, fontSize: isMobile ? 28 : 32 }}>Room</h1>
-          <div style={{ opacity: 0.8 }}>Code: {roomCode}</div>
-        </div>
+    <div style={styles.page}>
+      <div style={styles.layout}>
+        <div style={styles.leftColumn}>
+          <div style={styles.headerBlock}>
+            <div style={styles.roomTitleRow}>
+              <h1 style={styles.roomTitle}>Room: {roomCode}</h1>
+              <button style={styles.copyButton} onClick={copyRoomLink}>
+                Copy Link
+              </button>
+            </div>
 
-        <button
-          onClick={handleCopyLink}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            background: "white",
-            cursor: "pointer",
-            width: isMobile ? "100%" : "auto",
-          }}
-        >
-          Copy Share Link
-        </button>
-      </div>
+            <p style={styles.roleText}>
+              Your role: <strong>{isHost ? "HOST" : "GUEST"}</strong>
+            </p>
 
-      <div
-        style={{
-          marginTop: 16,
-          border: "1px solid #e5e7eb",
-          borderRadius: 14,
-          padding: 14,
-          background: "#fff",
-        }}
-      >
-        <div style={{ fontWeight: 800, marginBottom: 10 }}>
-          In this room ({participants.length})
-        </div>
+            <p style={styles.subtleText}>
+              {isHost
+                ? "You control playback for everyone in the room."
+                : "You are synced to the host. Guest audio is muted."}
+            </p>
+          </div>
 
-        {participants.length === 0 ? (
-          <div style={{ color: "#6b7280" }}>No active listeners detected yet.</div>
-        ) : (
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {participants.map((p) => (
-              <div
-                key={p.id}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 999,
-                  border: "1px solid #d1d5db",
-                  background: p.isHost ? "#111" : "#fff",
-                  color: p.isHost ? "#fff" : "#111",
-                  fontWeight: 700,
-                  fontSize: 13,
-                }}
-              >
-                {p.name}
-                {p.isHost ? " • host" : ""}
+          <div style={styles.nowPlayingCard}>
+            <div style={styles.sectionHeading}>Now playing</div>
+
+            <div style={styles.nowPlayingRow}>
+              <img
+                src={currentThumbnail}
+                alt={currentTitle}
+                style={styles.nowPlayingThumb}
+              />
+
+              <div style={styles.nowPlayingMeta}>
+                <div style={styles.platformLabel}>YouTube</div>
+                <div style={styles.nowPlayingTitle}>{currentTitle}</div>
+                <div style={styles.elapsedText}>
+                  {room?.is_playing ? "Playing" : "Paused"}
+                </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div
-        style={{
-          marginTop: 24,
-          display: "grid",
-          gridTemplateColumns: isMobile ? "1fr" : "1.2fr 0.8fr",
-          gap: 18,
-        }}
-      >
-        <div>
-          <h2 style={{ margin: "0 0 6px", fontSize: isMobile ? 22 : 24 }}>
-            Room: {roomCode}
-          </h2>
-          <div style={{ marginBottom: 12, opacity: 0.85 }}>
-            Your role: <b>{role}</b>{" "}
-            {isHost ? (
-              <span style={{ opacity: 0.7 }}>(one true host)</span>
-            ) : null}
+            </div>
           </div>
 
-          <h3 style={{ margin: "18px 0 8px" }}>Now playing</h3>
-          <div style={{ marginBottom: 10, opacity: 0.8 }}>
-            {isHost
-              ? "You're the host — everyone stays synced to you."
-              : "Host controls playback."}
-          </div>
-
-          <div
-            style={{
-              marginBottom: 14,
-              border: "1px solid #e5e7eb",
-              borderRadius: 18,
-              padding: 12,
-              background: "#fff",
-              display: "grid",
-              gridTemplateColumns: isValidYouTubeId(nowVideoId) ? "120px 1fr" : "1fr",
-              gap: 12,
-              alignItems: "center",
-            }}
-          >
-            {isValidYouTubeId(nowVideoId) ? (
-              <>
-                <div
-                  style={{
-                    width: "100%",
-                    aspectRatio: "16 / 9",
-                    borderRadius: 14,
-                    overflow: "hidden",
-                    background: "#111",
-                  }}
-                >
-                  {nowPlayingMeta.thumbnail ? (
-                    <img
-                      src={nowPlayingMeta.thumbnail}
-                      alt={nowPlayingMeta.title || "Now playing"}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        objectFit: "cover",
-                        display: "block",
-                      }}
-                    />
-                  ) : null}
-                </div>
-
-                <div style={{ minWidth: 0 }}>
-                  <div
-                    style={{
-                      color: "#6b7280",
-                      fontSize: 13,
-                      textTransform: "capitalize",
-                      marginBottom: 4,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {nowPlayingMeta.provider || "youtube"}
-                  </div>
-
-                  <div
-                    style={{
-                      fontSize: isMobile ? 18 : 20,
-                      fontWeight: 900,
-                      lineHeight: 1.2,
-                      color: "#111827",
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    {nowPlayingMeta.title || fallbackTitle(nowVideoId)}
-                  </div>
-
-                  <div
-                    style={{
-                      marginTop: 6,
-                      color: "#6b7280",
-                      fontSize: 13,
-                    }}
-                  >
-                    {Math.floor((isHost ? localTime : hostTime) || 0)}s elapsed
-                  </div>
-                </div>
-              </>
+          <div style={styles.playerCard}>
+            {playerVideoId ? (
+              <YouTube
+                key={playerVideoId}
+                videoId={playerVideoId}
+                opts={youtubeOpts}
+                onReady={handlePlayerReady}
+                onStateChange={handlePlayerStateChange}
+              />
             ) : (
-              <div style={{ color: "#6b7280" }}>No video selected</div>
+              <div style={styles.emptyPlayer}>
+                Add a video to the queue, then press Play on a queue item.
+              </div>
             )}
           </div>
 
-          {isValidYouTubeId(nowVideoId) ? (
-            <YouTubePlayer
-              videoId={nowVideoId}
-              playing={isPlaying}
-              startSeconds={isHost ? 0 : hostTime}
-              seekTo={isHost ? null : seekTo}
-              muted={!isHost}
-              onTime={(t) => {
-                setLocalTime(t);
-              }}
-              onEnded={handleEnded}
-              onController={(ctrl) => {
-                playerCtrlRef.current = ctrl;
-              }}
-            />
-          ) : (
-            <div
-              style={{
-                width: "100%",
-                aspectRatio: "16/9",
-                background: "#000",
-                borderRadius: 12,
-              }}
-            />
-          )}
+          <div style={styles.controlsCard}>
+            <div style={styles.controlsRow}>
+              <button
+                style={{
+                  ...styles.primaryButton,
+                  ...(!isHost || !playerVideoId ? styles.disabledButton : {}),
+                }}
+                onClick={handleHostPlay}
+                disabled={!isHost || !playerVideoId}
+              >
+                Play
+              </button>
 
-          <div
-            style={{
-              marginTop: 12,
-              display: "grid",
-              gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, auto)",
-              gap: 10,
-            }}
-          >
-            <button
-              disabled={!isHost || !isValidYouTubeId(nowVideoId)}
-              onClick={handlePrevious}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 10,
-                border: "1px solid #ddd",
-                background: !isHost || !isValidYouTubeId(nowVideoId) ? "#f3f3f3" : "white",
-                cursor: !isHost || !isValidYouTubeId(nowVideoId) ? "not-allowed" : "pointer",
-                width: "100%",
-              }}
-            >
-              Previous
-            </button>
+              <button
+                style={{
+                  ...styles.primaryButton,
+                  ...(!isHost || !playerVideoId ? styles.disabledButton : {}),
+                }}
+                onClick={handleHostPause}
+                disabled={!isHost || !playerVideoId}
+              >
+                Pause
+              </button>
 
-            <button
-              disabled={!isHost || !isValidYouTubeId(nowVideoId)}
-              onClick={handleHostPlay}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 10,
-                border: "1px solid #ddd",
-                background: !isHost || !isValidYouTubeId(nowVideoId) ? "#f3f3f3" : "white",
-                cursor: !isHost || !isValidYouTubeId(nowVideoId) ? "not-allowed" : "pointer",
-                width: "100%",
-              }}
-            >
-              Play
-            </button>
-
-            <button
-              disabled={!isHost || !isValidYouTubeId(nowVideoId)}
-              onClick={handleHostPause}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 10,
-                border: "1px solid #ddd",
-                background: !isHost || !isValidYouTubeId(nowVideoId) ? "#f3f3f3" : "white",
-                cursor: !isHost || !isValidYouTubeId(nowVideoId) ? "not-allowed" : "pointer",
-                width: "100%",
-              }}
-            >
-              Pause
-            </button>
-
-            <button
-              disabled={!isHost}
-              onClick={handleSkip}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 10,
-                border: "1px solid #ddd",
-                background: !isHost ? "#f3f3f3" : "white",
-                cursor: !isHost ? "not-allowed" : "pointer",
-                width: "100%",
-              }}
-            >
-              Skip
-            </button>
+              <button style={styles.secondaryButton} onClick={handleResync}>
+                {isHost ? "Broadcast Sync" : "Resync"}
+              </button>
+            </div>
           </div>
 
-          <RoomChat roomId={room?.id} />
+          <div style={styles.addCard}>
+            <div style={styles.sectionHeading}>Add YouTube link</div>
+
+            <div style={styles.addRow}>
+              <input
+                value={videoInput}
+                onChange={(e) => setVideoInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") addVideoToQueue();
+                }}
+                placeholder="Paste a YouTube URL or video ID"
+                style={styles.input}
+              />
+
+              <button style={styles.addButton} onClick={addVideoToQueue}>
+                Add
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div>
-          <QueuePanel roomId={room?.id} isHost={isHost} onPlay={handleHostSetVideo} />
+        <div style={styles.rightColumn}>
+          <div style={styles.queuePanel}>
+            <div style={styles.queueHeader}>Queue ({queue.length})</div>
+
+            {queue.length === 0 ? (
+              <div style={styles.emptyQueue}>Queue is empty.</div>
+            ) : (
+              queue.map((item, index) => {
+                const busy = queueBusyId === item.id;
+
+                return (
+                  <div key={item.id} style={styles.queueItem}>
+                    <div style={styles.queueItemTop}>
+                      <img
+                        src={getYouTubeThumb(item.video_id)}
+                        alt={item.title}
+                        style={styles.queueThumb}
+                      />
+
+                      <div style={styles.queueMeta}>
+                        <div style={styles.queueItemTitle}>
+                          {item.title || "Untitled"}
+                        </div>
+
+                        <div style={styles.queueSub}>
+                          Added by{" "}
+                          {item.added_by_name || item.added_by || "unknown"}
+                        </div>
+
+                        <div style={styles.queueSub}>
+                          Queue position: {index + 1}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={styles.queueActions}>
+                      <button
+                        style={{
+                          ...styles.queueActionButton,
+                          ...(!isHost || busy ? styles.disabledButton : {}),
+                        }}
+                        onClick={() => playQueueItemNow(item)}
+                        disabled={!isHost || busy}
+                      >
+                        Play
+                      </button>
+
+                      <button
+                        style={{
+                          ...styles.queueActionButton,
+                          ...(!isHost || busy ? styles.disabledButton : {}),
+                        }}
+                        onClick={() => removeQueueItem(item.id)}
+                        disabled={!isHost || busy}
+                      >
+                        Remove
+                      </button>
+
+                      <button
+                        style={{
+                          ...styles.iconButton,
+                          ...(!isHost || index === 0 || busy
+                            ? styles.disabledButton
+                            : {}),
+                        }}
+                        onClick={() => moveQueueItem(item, "up")}
+                        disabled={!isHost || index === 0 || busy}
+                      >
+                        ↑
+                      </button>
+
+                      <button
+                        style={{
+                          ...styles.iconButton,
+                          ...(!isHost || index === queue.length - 1 || busy
+                            ? styles.disabledButton
+                            : {}),
+                        }}
+                        onClick={() => moveQueueItem(item, "down")}
+                        disabled={!isHost || index === queue.length - 1 || busy}
+                      >
+                        ↓
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
       </div>
     </div>
   );
 }
+
+const styles = {
+  page: {
+    minHeight: "100vh",
+    background:
+      "radial-gradient(circle at top left, #16357a 0%, #0a1b4d 35%, #031031 70%, #020816 100%)",
+    padding: "30px",
+    boxSizing: "border-box",
+    color: "#0f172a",
+  },
+  layout: {
+    display: "grid",
+    gridTemplateColumns: "1.45fr 0.95fr",
+    gap: "28px",
+    alignItems: "start",
+    maxWidth: "1450px",
+    margin: "0 auto",
+  },
+  leftColumn: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "20px",
+  },
+  rightColumn: {
+    display: "flex",
+    flexDirection: "column",
+  },
+  headerBlock: {
+    color: "white",
+    padding: "8px 2px",
+  },
+  roomTitleRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "16px",
+    flexWrap: "wrap",
+  },
+  roomTitle: {
+    margin: 0,
+    fontSize: "3rem",
+    fontWeight: 900,
+    lineHeight: 1,
+  },
+  copyButton: {
+    border: "none",
+    borderRadius: "14px",
+    padding: "10px 14px",
+    fontWeight: 900,
+    fontSize: "0.9rem",
+    cursor: "pointer",
+    background: "white",
+    color: "#111827",
+  },
+  roleText: {
+    margin: "14px 0 6px",
+    fontSize: "1.25rem",
+    fontWeight: 600,
+  },
+  subtleText: {
+    margin: 0,
+    opacity: 0.9,
+    fontSize: "1.05rem",
+  },
+  nowPlayingCard: {
+    background: "rgba(255,255,255,0.97)",
+    borderRadius: "28px",
+    padding: "26px",
+    boxShadow: "0 18px 40px rgba(0,0,0,0.2)",
+  },
+  sectionHeading: {
+    fontSize: "1.35rem",
+    fontWeight: 900,
+    marginBottom: "18px",
+    color: "#111827",
+  },
+  nowPlayingRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "18px",
+  },
+  nowPlayingThumb: {
+    width: "150px",
+    height: "96px",
+    objectFit: "cover",
+    borderRadius: "18px",
+    background: "#e5e7eb",
+    flexShrink: 0,
+  },
+  nowPlayingMeta: {
+    minWidth: 0,
+  },
+  platformLabel: {
+    fontSize: "1rem",
+    color: "#6b7280",
+    fontWeight: 800,
+    marginBottom: "8px",
+  },
+  nowPlayingTitle: {
+    fontSize: "2.3rem",
+    fontWeight: 900,
+    lineHeight: 1.02,
+    color: "#111827",
+    wordBreak: "break-word",
+  },
+  elapsedText: {
+    marginTop: "12px",
+    color: "#6b7280",
+    fontSize: "1.05rem",
+    fontWeight: 600,
+  },
+  playerCard: {
+    background: "rgba(255,255,255,0.97)",
+    borderRadius: "28px",
+    padding: "18px",
+    boxShadow: "0 18px 40px rgba(0,0,0,0.2)",
+    overflow: "hidden",
+  },
+  emptyPlayer: {
+    minHeight: "440px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#6b7280",
+    fontSize: "1.05rem",
+    fontWeight: 600,
+    textAlign: "center",
+    padding: "20px",
+  },
+  controlsCard: {
+    background: "rgba(255,255,255,0.97)",
+    borderRadius: "24px",
+    padding: "18px",
+    boxShadow: "0 18px 40px rgba(0,0,0,0.2)",
+  },
+  controlsRow: {
+    display: "flex",
+    gap: "12px",
+    flexWrap: "wrap",
+  },
+  primaryButton: {
+    border: "none",
+    borderRadius: "15px",
+    padding: "13px 20px",
+    fontWeight: 900,
+    fontSize: "1rem",
+    cursor: "pointer",
+    background: "#111827",
+    color: "white",
+  },
+  secondaryButton: {
+    border: "none",
+    borderRadius: "15px",
+    padding: "13px 20px",
+    fontWeight: 900,
+    fontSize: "1rem",
+    cursor: "pointer",
+    background: "#e5e7eb",
+    color: "#111827",
+  },
+  addCard: {
+    background: "rgba(255,255,255,0.97)",
+    borderRadius: "24px",
+    padding: "20px",
+    boxShadow: "0 18px 40px rgba(0,0,0,0.2)",
+  },
+  addRow: {
+    display: "flex",
+    gap: "12px",
+  },
+  input: {
+    flex: 1,
+    borderRadius: "15px",
+    border: "1px solid #d1d5db",
+    padding: "13px 15px",
+    fontSize: "1rem",
+    outline: "none",
+    background: "white",
+  },
+  addButton: {
+    border: "none",
+    borderRadius: "15px",
+    padding: "13px 20px",
+    fontWeight: 900,
+    fontSize: "1rem",
+    cursor: "pointer",
+    background: "#111827",
+    color: "white",
+  },
+  queuePanel: {
+    background: "rgba(255,255,255,0.97)",
+    borderRadius: "30px",
+    padding: "24px",
+    boxShadow: "0 18px 40px rgba(0,0,0,0.2)",
+  },
+  queueHeader: {
+    fontSize: "2.2rem",
+    fontWeight: 900,
+    marginBottom: "18px",
+    color: "#111827",
+  },
+  emptyQueue: {
+    color: "#6b7280",
+    padding: "16px 4px",
+    fontSize: "1rem",
+    fontWeight: 600,
+  },
+  queueItem: {
+    border: "1px solid #e5e7eb",
+    borderRadius: "24px",
+    padding: "16px",
+    marginBottom: "16px",
+    background: "#fff",
+  },
+  queueItemTop: {
+    display: "flex",
+    gap: "14px",
+    alignItems: "flex-start",
+  },
+  queueThumb: {
+    width: "132px",
+    height: "76px",
+    objectFit: "cover",
+    borderRadius: "14px",
+    background: "#e5e7eb",
+    flexShrink: 0,
+  },
+  queueMeta: {
+    flex: 1,
+    minWidth: 0,
+  },
+  queueItemTitle: {
+    fontSize: "1.2rem",
+    fontWeight: 900,
+    lineHeight: 1.25,
+    marginBottom: "7px",
+    color: "#111827",
+    wordBreak: "break-word",
+  },
+  queueSub: {
+    color: "#6b7280",
+    fontSize: "0.98rem",
+    marginBottom: "4px",
+    fontWeight: 600,
+  },
+  queueActions: {
+    display: "flex",
+    gap: "10px",
+    flexWrap: "wrap",
+    marginTop: "15px",
+    paddingLeft: "146px",
+  },
+  queueActionButton: {
+    border: "none",
+    borderRadius: "14px",
+    padding: "12px 18px",
+    fontWeight: 800,
+    fontSize: "1rem",
+    cursor: "pointer",
+    background: "#f3f4f6",
+    color: "#111827",
+  },
+  iconButton: {
+    border: "none",
+    borderRadius: "14px",
+    padding: "12px 16px",
+    fontWeight: 900,
+    fontSize: "1rem",
+    cursor: "pointer",
+    background: "#f3f4f6",
+    color: "#111827",
+    minWidth: "52px",
+  },
+  disabledButton: {
+    opacity: 0.45,
+    cursor: "not-allowed",
+  },
+  statusCard: {
+    background: "white",
+    borderRadius: "22px",
+    padding: "26px",
+    boxShadow: "0 18px 40px rgba(0,0,0,0.2)",
+    maxWidth: "540px",
+  },
+};

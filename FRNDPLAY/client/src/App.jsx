@@ -1,214 +1,448 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "./supabase";
-import Auth from "./components/Auth";
-import CreateRoom from "./components/CreateRoom";
-import JoinRoom from "./components/JoinRoom";
 import RoomView from "./components/RoomView";
-import "./App.css";
+
+const POST_LOGIN_REDIRECT_KEY = "frndplay_post_login_redirect";
 
 function getRoomCodeFromUrl() {
-  try {
-    const url = new URL(window.location.href);
-    return (
-      url.searchParams.get("room") ||
-      url.searchParams.get("code") ||
-      url.searchParams.get("roomCode") ||
-      ""
-    )
-      .toUpperCase()
-      .trim();
-  } catch {
-    return "";
-  }
+  const params = new URLSearchParams(window.location.search);
+  return (params.get("room") || "").trim().toUpperCase();
 }
 
-function getDisplayName(email) {
-  const em = String(email || "").trim().toLowerCase();
-  if (!em) return "Guest";
-  return em.includes("@") ? em.split("@")[0] : em;
+function getCurrentRelativeUrl() {
+  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
+
+function restoreSavedRedirectIfNeeded(session) {
+  if (!session?.user) return false;
+
+  const savedRedirect = localStorage.getItem(POST_LOGIN_REDIRECT_KEY);
+  if (!savedRedirect) return false;
+
+  const currentRelative = getCurrentRelativeUrl();
+
+  if (currentRelative !== savedRedirect) {
+    window.location.replace(savedRedirect);
+    return true;
+  }
+
+  localStorage.removeItem(POST_LOGIN_REDIRECT_KEY);
+  return false;
+}
+
+function makeCode(len = 6) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let out = "";
+  for (let i = 0; i < len; i += 1) {
+    out += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return out;
 }
 
 export default function App() {
-  const roomCode = useMemo(() => getRoomCodeFromUrl(), []);
   const [session, setSession] = useState(null);
-  const [loadingAuth, setLoadingAuth] = useState(true);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [roomCode, setRoomCode] = useState(getRoomCodeFromUrl());
+  const [joinCode, setJoinCode] = useState("");
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    let alive = true;
+    const syncRoomCodeFromUrl = () => {
+      setRoomCode(getRoomCodeFromUrl());
+    };
 
-    async function init() {
-      const { data } = await supabase.auth.getSession();
-      if (!alive) return;
-      setSession(data?.session ?? null);
-      setLoadingAuth(false);
-    }
-
-    init();
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
-      setSession(next ?? null);
-      setLoadingAuth(false);
-    });
+    syncRoomCodeFromUrl();
+    window.addEventListener("popstate", syncRoomCodeFromUrl);
 
     return () => {
-      alive = false;
-      sub?.subscription?.unsubscribe?.();
+      window.removeEventListener("popstate", syncRoomCodeFromUrl);
     };
   }, []);
 
-  const handleSignOut = async () => {
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadSession() {
+      try {
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
+
+        if (error) {
+          console.error("getSession error:", error);
+        }
+
+        if (!mounted) return;
+
+        setSession(session ?? null);
+
+        const redirected = restoreSavedRedirectIfNeeded(session);
+        if (redirected) return;
+
+        setAuthLoading(false);
+      } catch (err) {
+        console.error("loadSession unexpected error:", err);
+        if (mounted) setAuthLoading(false);
+      }
+    }
+
+    loadSession();
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      setSession(nextSession ?? null);
+
+      if (event === "SIGNED_IN") {
+        const redirected = restoreSavedRedirectIfNeeded(nextSession);
+        if (redirected) return;
+      }
+
+      setAuthLoading(false);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const goToRoom = (code) => {
+    const normalized = String(code || "").trim().toUpperCase();
+    if (!normalized) return;
+
+    const nextUrl = `/?room=${encodeURIComponent(normalized)}`;
+    window.location.assign(nextUrl);
+  };
+
+  const signInWithGoogle = async () => {
     try {
-      await supabase.auth.signOut();
-      const url = new URL(window.location.href);
-      window.location.href = url.searchParams.get("room")
-        ? `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(
-            url.searchParams.get("room")
-          )}`
-        : `${window.location.origin}${window.location.pathname}`;
+      const currentRelativeUrl = getCurrentRelativeUrl();
+      localStorage.setItem(POST_LOGIN_REDIRECT_KEY, currentRelativeUrl);
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: window.location.origin,
+        },
+      });
+
+      if (error) {
+        console.error("Google sign-in error:", error);
+        alert(error.message);
+      }
     } catch (err) {
-      console.error("Sign out failed:", err);
+      console.error("Google sign-in unexpected error:", err);
+      alert(err.message || "Google sign-in failed.");
     }
   };
 
-  if (roomCode) {
-    return <RoomView />;
+  const signOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error("Sign-out error:", error);
+        alert(error.message);
+      }
+    } catch (err) {
+      console.error("Sign-out unexpected error:", err);
+      alert(err.message || "Sign-out failed.");
+    }
+  };
+
+  const handleJoinRoom = () => {
+    const normalized = joinCode.trim().toUpperCase();
+
+    if (!normalized) {
+      alert("Enter a room code.");
+      return;
+    }
+
+    goToRoom(normalized);
+  };
+
+  const handleCreateRoom = async () => {
+    if (!session?.user?.id) {
+      alert("Sign in with Google before creating a room.");
+      return;
+    }
+
+    setBusy(true);
+
+    try {
+      let createdRoomCode = null;
+
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        const code = makeCode(6);
+
+        const payload = {
+          code,
+          owner_id: session.user.id,
+          host_user_id: session.user.id,
+          current_video_id: "",
+          current_title: "",
+          is_playing: false,
+          playback_time: 0,
+        };
+
+        const { error } = await supabase.from("rooms").insert([payload]);
+
+        if (!error) {
+          createdRoomCode = code;
+          break;
+        }
+
+        const message = String(error.message || "").toLowerCase();
+        const isCollision =
+          message.includes("duplicate") ||
+          message.includes("unique") ||
+          message.includes("already exists");
+
+        if (!isCollision) {
+          throw error;
+        }
+      }
+
+      if (!createdRoomCode) {
+        throw new Error("Could not create a unique room code. Try again.");
+      }
+
+      goToRoom(createdRoomCode);
+    } catch (err) {
+      console.error("Create room error:", err);
+      alert(err.message || "Failed to create room.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (authLoading) {
+    return (
+      <div style={styles.page}>
+        <div style={styles.card}>
+          <h1 style={styles.title}>FRNDPLAY</h1>
+          <p style={styles.text}>Loading...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="app-shell">
-      <div className="app-bg-orb app-bg-orb-1" />
-      <div className="app-bg-orb app-bg-orb-2" />
-
-      <main className="landing-wrap">
-        <section className="hero-card">
-          <div className="hero-topbar">
-            <div className="brand-lockup">
-              <div className="brand-mark">⚡</div>
-              <div>
-                <div className="brand-name">FRNDPLAY</div>
-                <div className="brand-sub">
-                  Real-time shared listening rooms
-                </div>
-              </div>
-            </div>
-
-            <div className="session-pill">
-              {loadingAuth ? (
-                <span>Checking session...</span>
-              ) : session?.user ? (
-                <>
-                  <span className="session-pill-dot" />
-                  <span>Signed in as {getDisplayName(session.user.email)}</span>
-                </>
-              ) : (
-                <span>Not signed in</span>
-              )}
-            </div>
+    <div style={styles.page}>
+      <div style={styles.topBar}>
+        <div style={styles.brandBlock}>
+          <div style={styles.brand}>FRNDPLAY</div>
+          <div style={styles.subBrand}>
+            {roomCode ? `Room: ${roomCode}` : "Social listening"}
           </div>
+        </div>
 
-          <div className="hero-grid">
-            <div className="hero-copy">
-              <div className="eyebrow">Listen together from anywhere</div>
-
-              <h1 className="hero-title">
-                Build a room. Share a link. Stay in sync.
-              </h1>
-
-              <p className="hero-text">
-                FRNDPLAY lets groups listen to the same track at the same time
-                with host-controlled playback, a collaborative queue, live room
-                chat, and real-time presence across devices.
-              </p>
-
-              <div className="hero-bullets">
-                <div className="hero-bullet">Host-controlled playback</div>
-                <div className="hero-bullet">Shared queue with live updates</div>
-                <div className="hero-bullet">Room chat and active listeners</div>
-              </div>
-            </div>
-
-            <div className="hero-preview">
-              <div className="preview-window">
-                <div className="preview-header">
-                  <span className="preview-dot" />
-                  <span className="preview-dot" />
-                  <span className="preview-dot" />
-                </div>
-
-                <div className="preview-body">
-                  <div className="preview-now-playing">
-                    <div className="preview-label">Now playing</div>
-                    <div className="preview-track">Migos - Need It</div>
-                    <div className="preview-meta">Host synced • 4 listeners</div>
-                  </div>
-
-                  <div className="preview-player" />
-
-                  <div className="preview-controls">
-                    <button type="button">Previous</button>
-                    <button type="button">Play</button>
-                    <button type="button">Pause</button>
-                    <button type="button">Skip</button>
-                  </div>
-
-                  <div className="preview-queue-card">
-                    <div className="preview-thumb" />
-                    <div className="preview-queue-text">
-                      <div className="preview-queue-title">
-                        Shared queue with titles and artwork
-                      </div>
-                      <div className="preview-queue-meta">
-                        Added by friends in real time
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="actions-grid">
-          <div className="action-card">
-            <div className="action-card-header">
-              <h2>Create a room</h2>
-              <p>Start a new listening session and become the host.</p>
-            </div>
-            <CreateRoom />
-          </div>
-
-          <div className="action-card">
-            <div className="action-card-header">
-              <h2>Join a room</h2>
-              <p>Jump into an existing room with a code or shared link.</p>
-            </div>
-            <JoinRoom />
-          </div>
-        </section>
-
-        <section className="auth-card">
-          <div className="action-card-header">
-            <h2>Account access</h2>
-            <p>
-              Sign in with a magic link so your rooms, queue actions, and chat
-              identity stay consistent across devices.
-            </p>
-          </div>
-
-          <Auth />
-
+        <div style={styles.authBlock}>
           {session?.user ? (
-            <div className="auth-footer">
-              <div className="signed-in-note">
-                Signed in as <b>{session.user.email}</b>
-              </div>
-              <button className="secondary-btn" onClick={handleSignOut}>
+            <>
+              <div style={styles.userText}>{session.user.email || "Signed in"}</div>
+              <button style={styles.secondaryButton} onClick={signOut}>
                 Sign out
               </button>
+            </>
+          ) : (
+            <button style={styles.primaryButton} onClick={signInWithGoogle}>
+              Continue with Google
+            </button>
+          )}
+        </div>
+      </div>
+
+      {roomCode ? (
+        <RoomView />
+      ) : (
+        <div style={styles.card}>
+          <h1 style={styles.title}>Welcome to FRNDPLAY</h1>
+          <p style={styles.text}>
+            Create a room or join a room to start listening together.
+          </p>
+
+          <div style={styles.actionsBlock}>
+            <div style={styles.sectionTitle}>Join a room</div>
+            <div style={styles.row}>
+              <input
+                type="text"
+                value={joinCode}
+                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleJoinRoom();
+                }}
+                placeholder="Enter room code"
+                style={styles.input}
+                maxLength={12}
+              />
+              <button style={styles.primaryButtonLarge} onClick={handleJoinRoom}>
+                Join Room
+              </button>
             </div>
-          ) : null}
-        </section>
-      </main>
+
+            <div style={styles.divider} />
+
+            <div style={styles.sectionTitle}>Create a room</div>
+            <p style={styles.helperText}>
+              {session?.user
+                ? "Create a new listening room and jump straight in."
+                : "Sign in with Google to create a room."}
+            </p>
+
+            <button
+              style={{
+                ...styles.primaryButtonLarge,
+                ...(busy ? styles.disabledButton : {}),
+              }}
+              onClick={handleCreateRoom}
+              disabled={busy}
+            >
+              {busy ? "Creating..." : "Create Room"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+const styles = {
+  page: {
+    minHeight: "100vh",
+    background:
+      "radial-gradient(circle at top left, #16357a 0%, #0a1b4d 35%, #031031 70%, #020816 100%)",
+    padding: "24px",
+    boxSizing: "border-box",
+    fontFamily:
+      'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  },
+  topBar: {
+    maxWidth: "1450px",
+    margin: "0 auto 20px auto",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: "16px",
+    flexWrap: "wrap",
+  },
+  brandBlock: {
+    color: "white",
+  },
+  brand: {
+    fontSize: "2rem",
+    fontWeight: 900,
+    letterSpacing: "-0.03em",
+  },
+  subBrand: {
+    marginTop: "4px",
+    fontSize: "1rem",
+    opacity: 0.9,
+  },
+  authBlock: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    flexWrap: "wrap",
+  },
+  userText: {
+    color: "white",
+    fontWeight: 600,
+    fontSize: "0.95rem",
+  },
+  card: {
+    maxWidth: "760px",
+    margin: "60px auto 0 auto",
+    background: "rgba(255,255,255,0.97)",
+    borderRadius: "28px",
+    padding: "32px",
+    boxShadow: "0 18px 40px rgba(0,0,0,0.22)",
+  },
+  title: {
+    margin: 0,
+    fontSize: "2.4rem",
+    fontWeight: 900,
+    color: "#111827",
+    lineHeight: 1.05,
+  },
+  text: {
+    margin: "16px 0 0 0",
+    color: "#4b5563",
+    fontSize: "1.05rem",
+    lineHeight: 1.6,
+    fontWeight: 500,
+  },
+  actionsBlock: {
+    marginTop: "28px",
+  },
+  sectionTitle: {
+    fontSize: "1.1rem",
+    fontWeight: 800,
+    color: "#111827",
+    marginBottom: "12px",
+  },
+  row: {
+    display: "flex",
+    gap: "12px",
+    flexWrap: "wrap",
+    alignItems: "center",
+  },
+  input: {
+    flex: 1,
+    minWidth: "240px",
+    borderRadius: "14px",
+    border: "1px solid #d1d5db",
+    padding: "13px 15px",
+    fontSize: "1rem",
+    outline: "none",
+    background: "white",
+    textTransform: "uppercase",
+  },
+  divider: {
+    height: "1px",
+    background: "#e5e7eb",
+    margin: "24px 0",
+  },
+  helperText: {
+    margin: "0 0 14px 0",
+    color: "#6b7280",
+    fontSize: "0.95rem",
+    lineHeight: 1.5,
+    fontWeight: 500,
+  },
+  primaryButton: {
+    border: "none",
+    borderRadius: "14px",
+    padding: "12px 18px",
+    background: "#111827",
+    color: "white",
+    fontWeight: 800,
+    fontSize: "0.98rem",
+    cursor: "pointer",
+  },
+  primaryButtonLarge: {
+    border: "none",
+    borderRadius: "16px",
+    padding: "14px 22px",
+    background: "#111827",
+    color: "white",
+    fontWeight: 900,
+    fontSize: "1rem",
+    cursor: "pointer",
+  },
+  secondaryButton: {
+    border: "none",
+    borderRadius: "14px",
+    padding: "12px 18px",
+    background: "#e5e7eb",
+    color: "#111827",
+    fontWeight: 800,
+    fontSize: "0.98rem",
+    cursor: "pointer",
+  },
+  disabledButton: {
+    opacity: 0.6,
+    cursor: "not-allowed",
+  },
+};

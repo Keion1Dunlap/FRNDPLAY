@@ -1,15 +1,16 @@
-// client/src/components/CreateRoom.jsx
 import { useState } from "react";
 import { supabase } from "../supabase";
 
 function makeCode(len = 6) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let out = "";
-  for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  for (let i = 0; i < len; i++) {
+    out += chars[Math.floor(Math.random() * chars.length)];
+  }
   return out;
 }
 
-export default function CreateRoom({ user, setRoom }) {
+export default function CreateRoom() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -18,9 +19,16 @@ export default function CreateRoom({ user, setRoom }) {
     setLoading(true);
 
     try {
-      if (!user?.id) throw new Error("You must be signed in to create a room.");
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession();
 
-      // Try a few times in case code collides with an existing one
+      if (sessionError) throw sessionError;
+
+      const user = session?.user;
+      if (!user) throw new Error("You must be signed in to create a room.");
+
       let created = null;
       let lastErr = null;
 
@@ -29,7 +37,12 @@ export default function CreateRoom({ user, setRoom }) {
 
         const { data, error: roomError } = await supabase
           .from("rooms")
-          .insert([{ code, owner_id: user.id }])
+          .insert([
+            {
+              code,
+              owner_id: user.id,
+            },
+          ])
           .select("*")
           .single();
 
@@ -37,16 +50,15 @@ export default function CreateRoom({ user, setRoom }) {
           created = data;
           break;
         }
+
         lastErr = roomError;
       }
 
       if (!created) throw lastErr || new Error("Could not create room.");
 
-      // IMPORTANT:
-      // Do NOT insert into room_members here.
-      // Your DB trigger (add_host_member_on_room_create) should add the host automatically.
-      setRoom(created);
+      window.location.href = `/?room=${created.code}`;
     } catch (e) {
+      console.error("Create room error:", e);
       setError(String(e?.message ?? e));
     } finally {
       setLoading(false);
@@ -56,10 +68,14 @@ export default function CreateRoom({ user, setRoom }) {
   return (
     <div style={{ marginTop: 16 }}>
       <h2>Create a room</h2>
+
       <button onClick={createRoom} disabled={loading} style={btn}>
         {loading ? "Creating..." : "Create Room"}
       </button>
-      {error ? <div style={{ marginTop: 10, color: "#b00020" }}>{error}</div> : null}
+
+      {error ? (
+        <div style={{ marginTop: 10, color: "#b00020" }}>{error}</div>
+      ) : null}
     </div>
   );
 }
