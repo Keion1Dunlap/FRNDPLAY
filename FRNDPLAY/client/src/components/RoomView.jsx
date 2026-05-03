@@ -52,32 +52,57 @@ const responsiveCss = `
   }
 
   .queue-panel {
-    position: static !important;
-    transform: none !important;
-    margin: 0 !important;
-    padding: 18px !important;
-  }
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 auto !important;
+  padding: 14px !important;
+  border-radius: 24px !important;
+  box-sizing: border-box !important;
+}
 
-  .queue-item-top {
-    flex-direction: column !important;
-  }
+.queue-item {
+  width: 100% !important;
+  max-width: 100% !important;
+  padding: 12px !important;
+  box-sizing: border-box !important;
+}
 
-  .queue-thumb {
-    width: 100% !important;
-    height: auto !important;
-    max-height: 190px !important;
-  }
+.queue-item-top {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+}
 
-  .queue-actions {
-    padding-left: 0 !important;
-    display: grid !important;
-    grid-template-columns: 1fr 1fr !important;
-    gap: 10px !important;
-  }
+.queue-thumb {
+  width: 100% !important;
+  height: auto !important;
+  max-height: 170px !important;
+  object-fit: cover !important;
+}
 
-  .queue-actions button {
-    width: 100% !important;
-  }
+.queue-actions {
+  padding-left: 0 !important;
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 8px !important;
+  width: 100% !important;
+}
+
+.queue-actions button {
+  width: 100% !important;
+  min-width: 0 !important;
+  padding: 10px 8px !important;
+  font-size: 0.9rem !important;
+}
+
+.queue-header {
+  font-size: 1.8rem !important;
+}
+
+.queue-title {
+  font-size: 1.1rem !important;
+  word-break: break-word !important;
+}
 
   iframe {
     max-width: 100% !important;
@@ -1237,8 +1262,7 @@ style={{
 
 <div className="room-right" style={styles.rightColumn}>          <div className="queue-panel" style={styles.queuePanel}>
 <div style={styles.queueHeaderRow}>
-  <div style={styles.queueHeader}>
-    Queue ({queue.length})
+<div className="queue-header" style={styles.queueHeader}>    Queue ({queue.length})
   </div>
 
   <button
@@ -1259,8 +1283,7 @@ style={{
                 const busy = queueBusyId === item.id;
 
                 return (
-                  <div key={item.id} style={styles.queueItem}>
-                    <div className="queue-item-top" style={styles.queueItemTop}>
+<div key={item.id} className="queue-item" style={styles.queueItem}>                    <div className="queue-item-top" style={styles.queueItemTop}>
                       <img
                         src={getYouTubeThumb(item.video_id)}
                         alt={item.title}
@@ -1268,8 +1291,7 @@ className="queue-thumb"
 style={styles.queueThumb}                      />
 
                       <div style={styles.queueMeta}>
-                        <div style={styles.queueItemTitle}>
-                          {item.title || "Untitled"}
+<div className="queue-title" style={styles.queueItemTitle}>                          {item.title || "Untitled"}
                         </div>
 
                         <div style={styles.queueSub}>
