@@ -51,6 +51,7 @@ function getYouTubeThumb(videoId) {
   if (!videoId) return "";
   return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
 }
+
 async function getYouTubeTitle(videoId) {
   try {
     const url = `https://www.youtube.com/watch?v=${videoId}`;
@@ -66,6 +67,7 @@ async function getYouTubeTitle(videoId) {
     return `YouTube Video (${videoId})`;
   }
 }
+
 function projectHostPlaybackTime(room) {
   const base = safeNum(room?.playback_time, 0);
   if (!room?.is_playing) return base;
@@ -91,7 +93,6 @@ export default function RoomView() {
   }, []);
 
   const sessionId = useMemo(() => getSessionId(), []);
-
   const [room, setRoom] = useState(null);
   const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -242,10 +243,7 @@ export default function RoomView() {
         })
         .eq("code", roomCode);
 
-      if (updateError) {
-        console.error("updateRoomPlaybackState error:", updateError);
-        throw updateError;
-      }
+      if (updateError) throw updateError;
     },
     [roomCode]
   );
@@ -331,9 +329,7 @@ export default function RoomView() {
       .update(patch)
       .eq("code", roomCode);
 
-    if (hostError) {
-      console.error("ensureHostFields error:", hostError);
-    }
+    if (hostError) console.error("ensureHostFields error:", hostError);
   }, [authUserId, roomCode, sessionId]);
 
   const pushHostState = useCallback(async () => {
@@ -456,23 +452,21 @@ export default function RoomView() {
     if (!normalized.length) return normalized;
 
     for (const [index, item] of normalized.entries()) {
-      const tempPosition = 100000 + index;
-
-      const { error: tempError } = await supabase
+      const { error } = await supabase
         .from("room_queue")
-        .update({ position: tempPosition })
+        .update({ position: 100000 + index })
         .eq("id", item.id);
 
-      if (tempError) throw tempError;
+      if (error) throw error;
     }
 
     for (const item of normalized) {
-      const { error: positionError } = await supabase
+      const { error } = await supabase
         .from("room_queue")
         .update({ position: item.position })
         .eq("id", item.id);
 
-      if (positionError) throw positionError;
+      if (error) throw error;
     }
 
     return normalized;
@@ -612,6 +606,58 @@ export default function RoomView() {
     [isHost, loadRoom, renumberQueueInDb]
   );
 
+  const upvoteQueueItem = useCallback(
+  async (item) => {
+    if (!item?.id) return;
+
+    if (!authUserId) {
+      alert("Sign in to upvote songs.");
+      return;
+    }
+
+    try {
+      // ✅ Prevent duplicate votes
+      const { error: voteError } = await supabase
+        .from("room_queue_votes")
+        .insert([
+          {
+            queue_item_id: item.id,
+            user_id: authUserId,
+          },
+        ]);
+
+      if (voteError) {
+        const message = String(voteError.message || "").toLowerCase();
+
+        if (
+          message.includes("duplicate") ||
+          message.includes("unique") ||
+          message.includes("already exists")
+        ) {
+          alert("You already upvoted this song.");
+          return;
+        }
+
+        throw voteError;
+      }
+
+      // ✅ Only increment after successful vote insert
+      const nextVotes = Number(item.votes || 0) + 1;
+
+      const { error: updateError } = await supabase
+        .from("room_queue")
+        .update({ votes: nextVotes })
+        .eq("id", item.id);
+
+      if (updateError) throw updateError;
+    } catch (err) {
+      console.error("upvoteQueueItem error:", err);
+      alert(err.message || "Failed to upvote.");
+    }
+  },
+  [authUserId]
+);
+
   const addVideoToQueue = useCallback(async () => {
     const videoId = extractYouTubeId(videoInput);
 
@@ -637,17 +683,17 @@ export default function RoomView() {
 
       const highestPosition = existing?.[0]?.position || 0;
       const nextPosition = highestPosition + 1;
-
       const videoTitle = await getYouTubeTitle(videoId);
 
-const payload = {
-  room_id: roomRef.current.id,
-  video_id: videoId,
-  title: videoTitle,
-  added_by: authUserId || sessionId,
-  added_by_name: authUserEmail || "Guest",
-  position: nextPosition,
-};
+      const payload = {
+        room_id: roomRef.current.id,
+        video_id: videoId,
+        title: videoTitle,
+        added_by: authUserId || sessionId,
+        added_by_name: authUserEmail || "Guest",
+        position: nextPosition,
+        votes: 0,
+      };
 
       const { error: insertError } = await supabase
         .from("room_queue")
@@ -667,11 +713,8 @@ const payload = {
       playerRef.current = event.target;
       setPlayerReady(true);
 
-      if (isHost) {
-        event.target.unMute?.();
-      } else {
-        event.target.mute?.();
-      }
+      if (isHost) event.target.unMute?.();
+      else event.target.mute?.();
 
       const activeRoom = roomRef.current;
       if (!activeRoom) return;
@@ -685,30 +728,21 @@ const payload = {
         const latestRoom = roomRef.current;
         if (!latestRoom || !playerRef.current) return;
 
-        if (isHost) {
-          playerRef.current.unMute?.();
-        } else {
-          playerRef.current.mute?.();
-        }
+        if (isHost) playerRef.current.unMute?.();
+        else playerRef.current.mute?.();
 
         if (isHost) {
           const roomTime = safeNum(latestRoom.playback_time, 0);
           playerRef.current.seekTo?.(roomTime, true);
 
-          if (latestRoom.is_playing) {
-            playerRef.current.playVideo?.();
-          } else {
-            playerRef.current.pauseVideo?.();
-          }
+          if (latestRoom.is_playing) playerRef.current.playVideo?.();
+          else playerRef.current.pauseVideo?.();
         } else {
           const projected = projectHostPlaybackTime(latestRoom);
           playerRef.current.seekTo?.(projected, true);
 
-          if (latestRoom.is_playing) {
-            playerRef.current.playVideo?.();
-          } else {
-            playerRef.current.pauseVideo?.();
-          }
+          if (latestRoom.is_playing) playerRef.current.playVideo?.();
+          else playerRef.current.pauseVideo?.();
         }
       }, 250);
     },
@@ -728,6 +762,7 @@ const payload = {
         if (ytState === 1 || ytState === 2) {
           reconcileGuestToHost();
         }
+
         return;
       }
 
@@ -780,11 +815,8 @@ const payload = {
   }, [currentVideoId, isHost]);
 
   const handleResync = useCallback(async () => {
-    if (isHost) {
-      await pushHostState();
-    } else {
-      reconcileGuestToHost();
-    }
+    if (isHost) await pushHostState();
+    else reconcileGuestToHost();
   }, [isHost, pushHostState, reconcileGuestToHost]);
 
   useEffect(() => {
@@ -880,11 +912,8 @@ const payload = {
   useEffect(() => {
     if (!playerRef.current) return;
 
-    if (isHost) {
-      playerRef.current.unMute?.();
-    } else {
-      playerRef.current.mute?.();
-    }
+    if (isHost) playerRef.current.unMute?.();
+    else playerRef.current.mute?.();
   }, [isHost, playerVideoId]);
 
   useEffect(() => {
@@ -896,9 +925,7 @@ const payload = {
       return;
     }
 
-    if (!isHost) {
-      reconcileGuestToHost();
-    }
+    if (!isHost) reconcileGuestToHost();
   }, [isHost, reconcileGuestToHost, room]);
 
   if (!roomCode) {
@@ -1067,10 +1094,21 @@ const payload = {
                         <div style={styles.queueSub}>
                           Queue position: {index + 1}
                         </div>
+
+                        <div style={styles.voteText}>
+                          👍 Votes: {item.votes || 0}
+                        </div>
                       </div>
                     </div>
 
                     <div style={styles.queueActions}>
+                      <button
+                        style={styles.queueActionButton}
+                        onClick={() => upvoteQueueItem(item)}
+                      >
+                        👍 Upvote
+                      </button>
+
                       <button
                         style={{
                           ...styles.queueActionButton,
@@ -1372,6 +1410,12 @@ const styles = {
     fontSize: "0.98rem",
     marginBottom: "4px",
     fontWeight: 600,
+  },
+  voteText: {
+    color: "#111827",
+    fontSize: "1rem",
+    fontWeight: 900,
+    marginTop: "8px",
   },
   queueActions: {
     display: "flex",
