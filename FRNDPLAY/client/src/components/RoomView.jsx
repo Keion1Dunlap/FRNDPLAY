@@ -255,8 +255,8 @@ export default function RoomView() {
       .from("room_queue")
       .select("*")
       .eq("room_id", roomRef.current.id)
-      .order("position", { ascending: true });
-
+.order("votes", { ascending: false })
+.order("position", { ascending: true });
     if (fetchError) {
       console.error("fetchQueue error:", fetchError);
       return [];
@@ -1092,8 +1092,7 @@ export default function RoomView() {
                         </div>
 
                         <div style={styles.queueSub}>
-                          Queue position: {index + 1}
-                        </div>
+Rank: {index + 1}                        </div>
 
                         <div style={styles.voteText}>
                           👍 Votes: {item.votes || 0}
