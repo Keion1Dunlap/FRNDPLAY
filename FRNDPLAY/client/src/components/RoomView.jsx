@@ -1136,6 +1136,16 @@ added_by_name: displayName.trim() || authUserEmail || "Guest",        position: 
               >
                 Pause
               </button>
+              <button
+  style={{
+    ...styles.secondaryButton,
+    ...(!isHost || queue.length === 0 ? styles.disabledButton : {}),
+  }}
+  onClick={advanceToNextTrack}
+  disabled={!isHost || queue.length === 0}
+>
+  Skip Song
+</button>
                 <div style={styles.controlsRow}>
   <button
     style={{
