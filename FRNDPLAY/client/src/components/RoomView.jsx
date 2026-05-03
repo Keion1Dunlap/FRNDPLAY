@@ -169,6 +169,21 @@ function normalizeQueuePositions(items) {
 }
 
 export default function RoomView({ displayName = "" }) {  const roomCode = useMemo(() => {
+  const endRoom = async () => {
+  try {
+    // adjust if your state name is different
+    if (typeof setRoom === "function") {
+      setRoom(null);
+    }
+
+    localStorage.removeItem("frndplay_room");
+
+    // optional: redirect to home
+    window.location.href = "/";
+  } catch (err) {
+    console.error("End room failed:", err);
+  }
+};
     const params = new URLSearchParams(window.location.search);
     return (params.get("room") || "").trim().toUpperCase();
   }, []);
@@ -1115,8 +1130,14 @@ added_by_name: displayName.trim() || authUserEmail || "Guest",        position: 
               </button>
               {isHost && (
   <button
-    style={styles.endRoomButton}
-    onClick={endRoom}
+style={{
+  background: "#ef4444",
+  color: "#fff",
+  border: "none",
+  padding: "10px 14px",
+  borderRadius: 10,
+  fontWeight: 700
+}}    onClick={endRoom}
   >
     End Room
   </button>
