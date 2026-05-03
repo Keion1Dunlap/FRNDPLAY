@@ -3,29 +3,32 @@ import YouTube from "react-youtube";
 import { supabase } from "../supabase";
 const responsiveCss = `
 @media (max-width: 900px) {
+  body {
+    overflow-x: hidden;
+  }
+
   .room-page {
-    padding: 14px !important;
+    padding: 12px !important;
     overflow-x: hidden !important;
   }
 
   .room-layout {
     display: flex !important;
     flex-direction: column !important;
-    gap: 18px !important;
     width: 100% !important;
     max-width: 100% !important;
+    gap: 16px !important;
   }
 
   .room-left,
   .room-right {
     width: 100% !important;
     max-width: 100% !important;
+    min-width: 0 !important;
   }
 
   .room-title {
     font-size: 2rem !important;
-    line-height: 1.05 !important;
-    word-break: break-word !important;
   }
 
   .now-playing-row {
@@ -34,16 +37,25 @@ const responsiveCss = `
   }
 
   .now-playing-title {
-    font-size: 1.55rem !important;
-    line-height: 1.1 !important;
+    font-size: 1.5rem !important;
+    word-break: break-word !important;
   }
 
-  .queue-panel {
+  .player-card,
+  .controls-card,
+  .add-card,
+  .queue-panel,
+  .now-playing-card {
     width: 100% !important;
     max-width: 100% !important;
     box-sizing: border-box !important;
+  }
+
+  .queue-panel {
+    position: static !important;
+    transform: none !important;
+    margin: 0 !important;
     padding: 18px !important;
-    border-radius: 24px !important;
   }
 
   .queue-item-top {
@@ -53,7 +65,7 @@ const responsiveCss = `
   .queue-thumb {
     width: 100% !important;
     height: auto !important;
-    max-height: 180px !important;
+    max-height: 190px !important;
   }
 
   .queue-actions {
@@ -65,6 +77,10 @@ const responsiveCss = `
 
   .queue-actions button {
     width: 100% !important;
+  }
+
+  iframe {
+    max-width: 100% !important;
   }
 }
 `;
@@ -1074,7 +1090,8 @@ added_by_name: displayName.trim() || authUserEmail || "Guest",        position: 
 
   if (loading) {
     return (
-      <div style={styles.page}>
+  <div className="room-page" style={styles.page}>
+    <style>{responsiveCss}</style>
         <div style={styles.statusCard}>Loading room...</div>
       </div>
     );
@@ -1117,8 +1134,7 @@ added_by_name: displayName.trim() || authUserEmail || "Guest",        position: 
             </p>
           </div>
 
-          <div style={styles.nowPlayingCard}>
-            <div style={styles.sectionHeading}>Now playing</div>
+<div className="now-playing-card" style={styles.nowPlayingCard}>            <div style={styles.sectionHeading}>Now playing</div>
 
 <div className="now-playing-row" style={styles.nowPlayingRow}>              <img
                 src={currentThumbnail}
@@ -1137,8 +1153,7 @@ added_by_name: displayName.trim() || authUserEmail || "Guest",        position: 
             </div>
           </div>
 
-          <div style={styles.playerCard}>
-            {playerVideoId ? (
+<div className="player-card" style={styles.playerCard}>            {playerVideoId ? (
               <YouTube
                 key={playerVideoId}
                 videoId={playerVideoId}
@@ -1153,8 +1168,7 @@ added_by_name: displayName.trim() || authUserEmail || "Guest",        position: 
             )}
           </div>
 
-          <div style={styles.controlsCard}>
-            <div style={styles.controlsRow}>
+<div className="controls-card" style={styles.controlsCard}>            <div style={styles.controlsRow}>
               <button
                 style={{
                   ...styles.primaryButton,
@@ -1193,8 +1207,7 @@ added_by_name: displayName.trim() || authUserEmail || "Guest",        position: 
             </div>
           </div>
 
-          <div style={styles.addCard}>
-            <div style={styles.sectionHeading}>Add YouTube link</div>
+<div className="add-card" style={styles.addCard}>            <div style={styles.sectionHeading}>Add YouTube link</div>
 
             <div style={styles.addRow}>
               <input
