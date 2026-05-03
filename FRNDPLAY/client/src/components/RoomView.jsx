@@ -3,34 +3,68 @@ import YouTube from "react-youtube";
 import { supabase } from "../supabase";
 const responsiveCss = `
 @media (max-width: 900px) {
+  .room-page {
+    padding: 14px !important;
+    overflow-x: hidden !important;
+  }
+
   .room-layout {
     display: flex !important;
     flex-direction: column !important;
+    gap: 18px !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
-  .room-page {
-    padding: 16px !important;
+  .room-left,
+  .room-right {
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
   .room-title {
-    font-size: 2.1rem !important;
-  }
-
-  .now-playing-title {
-    font-size: 1.5rem !important;
+    font-size: 2rem !important;
+    line-height: 1.05 !important;
+    word-break: break-word !important;
   }
 
   .now-playing-row {
+    flex-direction: column !important;
     align-items: flex-start !important;
+  }
+
+  .now-playing-title {
+    font-size: 1.55rem !important;
+    line-height: 1.1 !important;
+  }
+
+  .queue-panel {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    padding: 18px !important;
+    border-radius: 24px !important;
+  }
+
+  .queue-item-top {
+    flex-direction: column !important;
+  }
+
+  .queue-thumb {
+    width: 100% !important;
+    height: auto !important;
+    max-height: 180px !important;
   }
 
   .queue-actions {
     padding-left: 0 !important;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
   }
 
-  .queue-thumb {
-    width: 104px !important;
-    height: 64px !important;
+  .queue-actions button {
+    width: 100% !important;
   }
 }
 `;
@@ -1004,7 +1038,7 @@ added_by_name: displayName.trim() || authUserEmail || "Guest",        position: 
 
   return (
     <div style={styles.page}>
-<div className="room-layout" style={styles.layout}>        <div style={styles.leftColumn}>
+<div className="room-layout" style={styles.layout}>        <div className="room-left" style={styles.leftColumn}>
           <div style={styles.headerBlock}>
             <div style={styles.roomTitleRow}>
 <h1 className="room-title" style={styles.roomTitle}>Room: {roomCode}</h1>              <button style={styles.copyButton} onClick={copyRoomLink}>
@@ -1145,8 +1179,7 @@ added_by_name: displayName.trim() || authUserEmail || "Guest",        position: 
           </div>
         </div>
 
-        <div style={styles.rightColumn}>
-          <div style={styles.queuePanel}>
+<div className="room-right" style={styles.rightColumn}>          <div className="queue-panel" style={styles.queuePanel}>
             <div style={styles.queueHeader}>Queue ({queue.length})</div>
 
             {queue.length === 0 ? (
@@ -1157,7 +1190,7 @@ added_by_name: displayName.trim() || authUserEmail || "Guest",        position: 
 
                 return (
                   <div key={item.id} style={styles.queueItem}>
-                    <div style={styles.queueItemTop}>
+                    <div className="queue-item-top" style={styles.queueItemTop}>
                       <img
                         src={getYouTubeThumb(item.video_id)}
                         alt={item.title}
