@@ -103,7 +103,7 @@ export default function RoomView() {
   const [playerVideoId, setPlayerVideoId] = useState("");
   const [authUserId, setAuthUserId] = useState(null);
   const [authUserEmail, setAuthUserEmail] = useState("");
-
+  const [userVotes, setUserVotes] = useState([]);
   const playerRef = useRef(null);
   const hostSyncIntervalRef = useRef(null);
   const guestSyncIntervalRef = useRef(null);
@@ -186,7 +186,25 @@ export default function RoomView() {
       subscription.unsubscribe();
     };
   }, []);
+  useEffect(() => {
+  if (!authUserId || !room?.id) return;
 
+  const fetchVotes = async () => {
+    const { data, error } = await supabase
+      .from("room_queue_votes")
+      .select("queue_item_id")
+      .eq("user_id", authUserId);
+
+    if (error) {
+      console.error("fetchVotes error:", error);
+      return;
+    }
+
+    setUserVotes((data || []).map((v) => v.queue_item_id));
+  };
+
+  fetchVotes();
+}, [authUserId, room?.id]);
   const copyRoomLink = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(window.location.href);
@@ -640,7 +658,9 @@ export default function RoomView() {
 
         throw voteError;
       }
-
+      setUserVotes((prev) =>
+  prev.includes(item.id) ? prev : [...prev, item.id]
+);
       // ✅ Only increment after successful vote insert
       const nextVotes = Number(item.votes || 0) + 1;
 
@@ -1140,11 +1160,15 @@ Rank: {index + 1}                        </div>
 
                     <div style={styles.queueActions}>
                       <button
-                        style={styles.queueActionButton}
-                        onClick={() => upvoteQueueItem(item)}
-                      >
-                        👍 Upvote
-                      </button>
+  style={{
+    ...styles.queueActionButton,
+    ...(userVotes.includes(item.id) ? styles.disabledButton : {}),
+  }}
+  onClick={() => upvoteQueueItem(item)}
+  disabled={userVotes.includes(item.id)}
+>
+  {userVotes.includes(item.id) ? "✅ Voted" : "👍 Upvote"}
+</button>
 
                       <button
                         style={{
