@@ -118,8 +118,7 @@ function normalizeQueuePositions(items) {
   }));
 }
 
-export default function RoomView() {
-  const roomCode = useMemo(() => {
+export default function RoomView({ displayName = "" }) {  const roomCode = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     return (params.get("room") || "").trim().toUpperCase();
   }, []);
@@ -742,8 +741,7 @@ export default function RoomView() {
         video_id: videoId,
         title: videoTitle,
         added_by: authUserId || sessionId,
-        added_by_name: authUserEmail || "Guest",
-        position: nextPosition,
+added_by_name: displayName.trim() || authUserEmail || "Guest",        position: nextPosition,
         votes: 0,
       };
 

@@ -24,6 +24,9 @@ export default function App() {
   const [roomCode, setRoomCode] = useState(getRoomCodeFromUrl());
   const [joinCode, setJoinCode] = useState("");
   const [busy, setBusy] = useState(false);
+  const [displayName, setDisplayName] = useState(
+    localStorage.getItem("frndplay_display_name") || ""
+  );
 
   useEffect(() => {
     const syncRoomCodeFromUrl = () => {
@@ -71,6 +74,11 @@ export default function App() {
       subscription.unsubscribe();
     };
   }, []);
+
+  const saveDisplayName = (value) => {
+    setDisplayName(value);
+    localStorage.setItem("frndplay_display_name", value);
+  };
 
   const goToRoom = (code) => {
     const normalized = String(code || "").trim().toUpperCase();
@@ -192,8 +200,15 @@ export default function App() {
           <div style={styles.authBlock}>
             {session?.user ? (
               <>
+                <input
+                  value={displayName}
+                  onChange={(e) => saveDisplayName(e.target.value)}
+                  placeholder="Display name"
+                  style={styles.nameInput}
+                  maxLength={24}
+                />
                 <div style={styles.userText}>
-                  {session.user.email || "Signed in"}
+                  {displayName.trim() || session.user.email || "Signed in"}
                 </div>
                 <button style={styles.secondaryButton} onClick={signOut}>
                   Sign out
@@ -207,7 +222,7 @@ export default function App() {
           </div>
         </div>
 
-        <RoomView />
+        <RoomView displayName={displayName} />
       </div>
     );
   }
@@ -223,8 +238,15 @@ export default function App() {
         <div style={styles.authBlock}>
           {session?.user ? (
             <>
+              <input
+                value={displayName}
+                onChange={(e) => saveDisplayName(e.target.value)}
+                placeholder="Display name"
+                style={styles.nameInput}
+                maxLength={24}
+              />
               <div style={styles.userText}>
-                {session.user.email || "Signed in"}
+                {displayName.trim() || session.user.email || "Signed in"}
               </div>
               <button style={styles.secondaryButton} onClick={signOut}>
                 Sign out
@@ -241,7 +263,7 @@ export default function App() {
       <div style={styles.card}>
         <h1 style={styles.title}>Welcome to FRNDPLAY</h1>
         <p style={styles.text}>
-          Create a room or join a room to start listening together.
+          Create or join a room to start listening together.
         </p>
 
         <div style={styles.actionsBlock}>
@@ -332,6 +354,16 @@ const styles = {
     color: "white",
     fontWeight: 700,
     fontSize: "0.95rem",
+  },
+  nameInput: {
+    border: "1px solid rgba(255,255,255,0.35)",
+    borderRadius: "14px",
+    padding: "11px 14px",
+    fontWeight: 800,
+    outline: "none",
+    background: "rgba(255,255,255,0.95)",
+    color: "#111827",
+    maxWidth: "180px",
   },
   card: {
     maxWidth: "760px",
