@@ -656,7 +656,27 @@ export default function RoomView({ displayName = "" }) {  const roomCode = useMe
     },
     [isHost, renumberQueueInDb]
   );
+  const clearQueue = useCallback(async () => {
+  if (!isHost || !roomRef.current?.id) return;
 
+  const confirmed = window.confirm("Clear all songs from the queue?");
+  if (!confirmed) return;
+
+  try {
+    const { error } = await supabase
+      .from("room_queue")
+      .delete()
+      .eq("room_id", roomRef.current.id);
+
+    if (error) throw error;
+
+    setQueue([]);
+    queueRef.current = [];
+  } catch (err) {
+    console.error("clearQueue error:", err);
+    alert("Failed to clear queue.");
+  }
+}, [isHost]);
   const moveQueueItem = useCallback(
     async (item, direction) => {
       if (!isHost || !item) return;
@@ -1180,8 +1200,22 @@ added_by_name: displayName.trim() || authUserEmail || "Guest",        position: 
         </div>
 
 <div className="room-right" style={styles.rightColumn}>          <div className="queue-panel" style={styles.queuePanel}>
-            <div style={styles.queueHeader}>Queue ({queue.length})</div>
+<div style={styles.queueHeaderRow}>
+  <div style={styles.queueHeader}>
+    Queue ({queue.length})
+  </div>
 
+  <button
+    style={{
+      ...styles.clearQueueButton,
+      ...(!isHost || queue.length === 0 ? styles.disabledButton : {}),
+    }}
+    onClick={clearQueue}
+    disabled={!isHost || queue.length === 0}
+  >
+    Clear Queue
+  </button>
+</div>
             {queue.length === 0 ? (
               <div style={styles.emptyQueue}>Queue is empty.</div>
             ) : (
@@ -1287,6 +1321,25 @@ Rank: {index + 1}                        </div>
 }
 
 const styles = {
+  queueHeaderRow: {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: "16px",
+  gap: "10px",
+  flexWrap: "wrap",
+},
+
+clearQueueButton: {
+  border: "none",
+  borderRadius: "12px",
+  padding: "10px 14px",
+  fontWeight: 800,
+  fontSize: "0.9rem",
+  cursor: "pointer",
+  background: "#fee2e2",
+  color: "#991b1b",
+},
   page: {
     minHeight: "100vh",
     background:
