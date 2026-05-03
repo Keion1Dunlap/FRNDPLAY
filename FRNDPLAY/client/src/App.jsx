@@ -177,16 +177,57 @@ export default function App() {
     }
   };
 
-  if (authLoading) {
-    return (
-      <div style={styles.page}>
-        <div style={styles.card}>
-          <h1 style={styles.title}>FRNDPLAY</h1>
-          <p style={styles.text}>Loading...</p>
+  if (roomCode) {
+  return (
+    <div style={styles.page}>
+      <div style={styles.topBar}>
+        <div style={styles.brandBlock}>
+          <div style={styles.brand}>FRNDPLAY</div>
+          <div style={styles.subBrand}>Room: {roomCode}</div>
+        </div>
+
+        <div style={styles.authBlock}>
+          {session?.user ? (
+            <>
+              <input
+                value={displayName}
+                onChange={(e) => saveDisplayName(e.target.value)}
+                placeholder="Display name"
+                style={styles.nameInput}
+                maxLength={24}
+              />
+              <div style={styles.userText}>
+                {displayName.trim() || session.user.email || "Signed in"}
+              </div>
+              <button style={styles.secondaryButton} onClick={signOut}>
+                Sign out
+              </button>
+            </>
+          ) : (
+            <button style={styles.primaryButton} onClick={signInWithGoogle}>
+              Continue with Google
+            </button>
+          )}
         </div>
       </div>
-    );
-  }
+
+      {session?.user ? (
+        <RoomView displayName={displayName} />
+      ) : (
+        <div style={styles.card}>
+          <h1 style={styles.title}>Join Room {roomCode}</h1>
+          <p style={styles.text}>
+            Sign in with Google to join this FRNDPLAY room and add songs to the queue.
+          </p>
+
+          <button style={styles.primaryButtonLarge} onClick={signInWithGoogle}>
+            Continue with Google
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
   if (roomCode) {
     return (
