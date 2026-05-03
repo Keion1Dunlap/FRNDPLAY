@@ -168,27 +168,46 @@ function normalizeQueuePositions(items) {
   }));
 }
 
-export default function RoomView({ displayName = "" }) {  const roomCode = useMemo(() => {
-  const endRoom = async () => {
-  try {
-    // adjust if your state name is different
-    if (typeof setRoom === "function") {
-      setRoom(null);
-    }
-
-    localStorage.removeItem("frndplay_room");
-
-    // optional: redirect to home
-    window.location.href = "/";
-  } catch (err) {
-    console.error("End room failed:", err);
-  }
-};
+export default function RoomView({ displayName = "" }) {
+  const roomCode = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     return (params.get("room") || "").trim().toUpperCase();
   }, []);
 
   const sessionId = useMemo(() => getSessionId(), []);
+  
+  const endRoom = async () => {
+  if (!isHost || !roomRef.current?.id) return;
+
+  const confirmed = window.confirm(
+    "End this room? This will remove the room and disconnect everyone."
+  );
+  if (!confirmed) return;
+
+  try {
+    const roomId = roomRef.current.id;
+
+    // delete queue first
+    await supabase
+      .from("room_queue")
+      .delete()
+      .eq("room_id", roomId);
+
+    // delete room
+    const { error } = await supabase
+      .from("rooms")
+      .delete()
+      .eq("id", roomId);
+
+    if (error) throw error;
+
+    // redirect
+    window.location.href = "/";
+  } catch (err) {
+    console.error("endRoom error:", err);
+    alert("Failed to end room.");
+  }
+};
   const [room, setRoom] = useState(null);
   const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -687,59 +706,27 @@ export default function RoomView({ displayName = "" }) {  const roomCode = useMe
     },
     [isHost, renumberQueueInDb]
   );
-  const clearQueue = useCallback(async () => {
-    const endRoom = useCallback(async () => {
-  if (!isHost || !roomRef.current?.id) return;
+    const clearQueue = useCallback(async () => {
+    if (!isHost || !roomRef.current?.id) return;
 
-  const confirmed = window.confirm(
-    "End this room? This will remove the room and disconnect everyone."
-  );
-  if (!confirmed) return;
+    const confirmed = window.confirm("Clear all songs from the queue?");
+    if (!confirmed) return;
 
-  try {
-    const roomId = roomRef.current.id;
+    try {
+      const { error } = await supabase
+        .from("room_queue")
+        .delete()
+        .eq("room_id", roomRef.current.id);
 
-    // Delete queue first (safe cleanup)
-    await supabase
-      .from("room_queue")
-      .delete()
-      .eq("room_id", roomId);
+      if (error) throw error;
 
-    // Delete the room
-    const { error } = await supabase
-      .from("rooms")
-      .delete()
-      .eq("id", roomId);
-
-    if (error) throw error;
-
-    // Redirect to homepage
-    window.location.href = "/";
-  } catch (err) {
-    console.error("endRoom error:", err);
-    alert("Failed to end room.");
-  }
-}, [isHost]);
-  if (!isHost || !roomRef.current?.id) return;
-
-  const confirmed = window.confirm("Clear all songs from the queue?");
-  if (!confirmed) return;
-
-  try {
-    const { error } = await supabase
-      .from("room_queue")
-      .delete()
-      .eq("room_id", roomRef.current.id);
-
-    if (error) throw error;
-
-    setQueue([]);
-    queueRef.current = [];
-  } catch (err) {
-    console.error("clearQueue error:", err);
-    alert("Failed to clear queue.");
-  }
-}, [isHost]);
+      setQueue([]);
+      queueRef.current = [];
+    } catch (err) {
+      console.error("clearQueue error:", err);
+      alert("Failed to clear queue.");
+    }
+  }, [isHost]);
   const moveQueueItem = useCallback(
     async (item, direction) => {
       if (!isHost || !item) return;
