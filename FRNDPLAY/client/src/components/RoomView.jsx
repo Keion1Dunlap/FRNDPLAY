@@ -1,7 +1,39 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import YouTube from "react-youtube";
 import { supabase } from "../supabase";
+const responsiveCss = `
+@media (max-width: 900px) {
+  .room-layout {
+    display: flex !important;
+    flex-direction: column !important;
+  }
 
+  .room-page {
+    padding: 16px !important;
+  }
+
+  .room-title {
+    font-size: 2.1rem !important;
+  }
+
+  .now-playing-title {
+    font-size: 1.5rem !important;
+  }
+
+  .now-playing-row {
+    align-items: flex-start !important;
+  }
+
+  .queue-actions {
+    padding-left: 0 !important;
+  }
+
+  .queue-thumb {
+    width: 104px !important;
+    height: 64px !important;
+  }
+}
+`;
 const SYNC_PUSH_INTERVAL_MS = 1000;
 const GUEST_RECONCILE_INTERVAL_MS = 1500;
 const SEEK_THRESHOLD_SECONDS = 1.5;
@@ -950,8 +982,8 @@ export default function RoomView() {
 
   if (!roomCode) {
     return (
-      <div style={styles.page}>
-        <div style={styles.statusCard}>Missing room code.</div>
+<div className="room-page" style={styles.page}>
+  <style>{responsiveCss}</style>        <div style={styles.statusCard}>Missing room code.</div>
       </div>
     );
   }
@@ -974,12 +1006,10 @@ export default function RoomView() {
 
   return (
     <div style={styles.page}>
-      <div style={styles.layout}>
-        <div style={styles.leftColumn}>
+<div className="room-layout" style={styles.layout}>        <div style={styles.leftColumn}>
           <div style={styles.headerBlock}>
             <div style={styles.roomTitleRow}>
-              <h1 style={styles.roomTitle}>Room: {roomCode}</h1>
-              <button style={styles.copyButton} onClick={copyRoomLink}>
+<h1 className="room-title" style={styles.roomTitle}>Room: {roomCode}</h1>              <button style={styles.copyButton} onClick={copyRoomLink}>
                 Copy Link
               </button>
             </div>
@@ -998,8 +1028,7 @@ export default function RoomView() {
           <div style={styles.nowPlayingCard}>
             <div style={styles.sectionHeading}>Now playing</div>
 
-            <div style={styles.nowPlayingRow}>
-              <img
+<div className="now-playing-row" style={styles.nowPlayingRow}>              <img
                 src={currentThumbnail}
                 alt={currentTitle}
                 style={styles.nowPlayingThumb}
@@ -1007,8 +1036,9 @@ export default function RoomView() {
 
               <div style={styles.nowPlayingMeta}>
                 <div style={styles.platformLabel}>YouTube</div>
-                <div style={styles.nowPlayingTitle}>{currentTitle}</div>
-                <div style={styles.elapsedText}>
+<div className="now-playing-title" style={styles.nowPlayingTitle}>
+  {currentTitle}
+</div>                <div style={styles.elapsedText}>
                   {room?.is_playing ? "Playing" : "Paused"}
                 </div>
               </div>
@@ -1088,14 +1118,11 @@ export default function RoomView() {
   >
     Play Top Voted
   </button>
-
   <button style={styles.secondaryButton} onClick={handleResync}>
-    {isHost ? "Broadcast Sync" : "Resync"}
-  </button>
-</div>
-              <button style={styles.secondaryButton} onClick={handleResync}>
                 {isHost ? "Broadcast Sync" : "Resync"}
               </button>
+            </div>
+
             </div>
           </div>
 
@@ -1136,8 +1163,8 @@ export default function RoomView() {
                       <img
                         src={getYouTubeThumb(item.video_id)}
                         alt={item.title}
-                        style={styles.queueThumb}
-                      />
+className="queue-thumb"
+style={styles.queueThumb}                      />
 
                       <div style={styles.queueMeta}>
                         <div style={styles.queueItemTitle}>
@@ -1158,8 +1185,7 @@ Rank: {index + 1}                        </div>
                       </div>
                     </div>
 
-                    <div style={styles.queueActions}>
-                      <button
+<div className="queue-actions" style={styles.queueActions}>                      <button
   style={{
     ...styles.queueActionButton,
     ...(userVotes.includes(item.id) ? styles.disabledButton : {}),
@@ -1239,13 +1265,13 @@ const styles = {
     color: "#0f172a",
   },
   layout: {
-    display: "grid",
-    gridTemplateColumns: "1.45fr 0.95fr",
-    gap: "28px",
-    alignItems: "start",
-    maxWidth: "1450px",
-    margin: "0 auto",
-  },
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1.45fr) minmax(340px, 0.95fr)",
+  gap: "28px",
+  alignItems: "start",
+  maxWidth: "1450px",
+  margin: "0 auto",
+},
   leftColumn: {
     display: "flex",
     flexDirection: "column",
@@ -1517,4 +1543,11 @@ const styles = {
     boxShadow: "0 18px 40px rgba(0,0,0,0.2)",
     maxWidth: "540px",
   },
+
+
+// 🔥 ADD THIS RIGHT HERE
+mobileNotice: {
+  display: "none",
+},
+
 };
