@@ -657,6 +657,38 @@ export default function RoomView({ displayName = "" }) {  const roomCode = useMe
     [isHost, renumberQueueInDb]
   );
   const clearQueue = useCallback(async () => {
+    const endRoom = useCallback(async () => {
+  if (!isHost || !roomRef.current?.id) return;
+
+  const confirmed = window.confirm(
+    "End this room? This will remove the room and disconnect everyone."
+  );
+  if (!confirmed) return;
+
+  try {
+    const roomId = roomRef.current.id;
+
+    // Delete queue first (safe cleanup)
+    await supabase
+      .from("room_queue")
+      .delete()
+      .eq("room_id", roomId);
+
+    // Delete the room
+    const { error } = await supabase
+      .from("rooms")
+      .delete()
+      .eq("id", roomId);
+
+    if (error) throw error;
+
+    // Redirect to homepage
+    window.location.href = "/";
+  } catch (err) {
+    console.error("endRoom error:", err);
+    alert("Failed to end room.");
+  }
+}, [isHost]);
   if (!isHost || !roomRef.current?.id) return;
 
   const confirmed = window.confirm("Clear all songs from the queue?");
@@ -1064,6 +1096,14 @@ added_by_name: displayName.trim() || authUserEmail || "Guest",        position: 
 <h1 className="room-title" style={styles.roomTitle}>Room: {roomCode}</h1>              <button style={styles.copyButton} onClick={copyRoomLink}>
                 Copy Link
               </button>
+              {isHost && (
+  <button
+    style={styles.endRoomButton}
+    onClick={endRoom}
+  >
+    End Room
+  </button>
+)}
             </div>
 
             <p style={styles.roleText}>
@@ -1146,44 +1186,9 @@ added_by_name: displayName.trim() || authUserEmail || "Guest",        position: 
 >
   Skip Song
 </button>
-                <div style={styles.controlsRow}>
-  <button
-    style={{
-      ...styles.primaryButton,
-      ...(!isHost || !playerVideoId ? styles.disabledButton : {}),
-    }}
-    onClick={handleHostPlay}
-    disabled={!isHost || !playerVideoId}
-  >
-    Play
-  </button>
-
-  <button
-    style={{
-      ...styles.primaryButton,
-      ...(!isHost || !playerVideoId ? styles.disabledButton : {}),
-    }}
-    onClick={handleHostPause}
-    disabled={!isHost || !playerVideoId}
-  >
-    Pause
-  </button>
-
-  {/* 🔥 ADD THIS RIGHT HERE */}
-  <button
-    style={{
-      ...styles.secondaryButton,
-      ...(!isHost || queue.length === 0 ? styles.disabledButton : {}),
-    }}
-    onClick={advanceToNextTrack}
-    disabled={!isHost || queue.length === 0}
-  >
-    Play Top Voted
-  </button>
-  <button style={styles.secondaryButton} onClick={handleResync}>
-                {isHost ? "Broadcast Sync" : "Resync"}
-              </button>
-            </div>
+    <button style={styles.secondaryButton} onClick={handleResync}>
+  {isHost ? "Broadcast Sync" : "Resync"}
+</button>            
 
             </div>
           </div>
@@ -1331,6 +1336,16 @@ Rank: {index + 1}                        </div>
 }
 
 const styles = {
+  endRoomButton: {
+  border: "none",
+  borderRadius: "14px",
+  padding: "10px 14px",
+  fontWeight: 900,
+  fontSize: "0.9rem",
+  cursor: "pointer",
+  background: "#dc2626",
+  color: "white",
+},
   queueHeaderRow: {
   display: "flex",
   justifyContent: "space-between",
