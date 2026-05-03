@@ -1034,7 +1034,45 @@ export default function RoomView() {
               >
                 Pause
               </button>
+                <div style={styles.controlsRow}>
+  <button
+    style={{
+      ...styles.primaryButton,
+      ...(!isHost || !playerVideoId ? styles.disabledButton : {}),
+    }}
+    onClick={handleHostPlay}
+    disabled={!isHost || !playerVideoId}
+  >
+    Play
+  </button>
 
+  <button
+    style={{
+      ...styles.primaryButton,
+      ...(!isHost || !playerVideoId ? styles.disabledButton : {}),
+    }}
+    onClick={handleHostPause}
+    disabled={!isHost || !playerVideoId}
+  >
+    Pause
+  </button>
+
+  {/* 🔥 ADD THIS RIGHT HERE */}
+  <button
+    style={{
+      ...styles.secondaryButton,
+      ...(!isHost || queue.length === 0 ? styles.disabledButton : {}),
+    }}
+    onClick={advanceToNextTrack}
+    disabled={!isHost || queue.length === 0}
+  >
+    Play Top Voted
+  </button>
+
+  <button style={styles.secondaryButton} onClick={handleResync}>
+    {isHost ? "Broadcast Sync" : "Resync"}
+  </button>
+</div>
               <button style={styles.secondaryButton} onClick={handleResync}>
                 {isHost ? "Broadcast Sync" : "Resync"}
               </button>
