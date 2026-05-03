@@ -53,9 +53,7 @@ export default function QueuePanel({ roomId, isHost, onPlay }) {
           table: "queue_items",
           filter: `room_id=eq.${roomId}`,
         },
-        () => {
-          loadQueue();
-        }
+        () => loadQueue()
       )
       .subscribe();
 
@@ -81,7 +79,7 @@ export default function QueuePanel({ roomId, isHost, onPlay }) {
 
   const handlePlay = (videoId) => {
     if (!isHost || !isValidYouTubeId(videoId)) return;
-    onPlay?.(videoId);
+    if (typeof onPlay === "function") onPlay(videoId);
   };
 
   const renumberQueue = async (itemsInNewOrder) => {
@@ -90,16 +88,13 @@ export default function QueuePanel({ roomId, isHost, onPlay }) {
     setBusy(true);
 
     try {
-      const updates = itemsInNewOrder.map((item, index) => ({
-        id: item.id,
-        position: index + 1,
-      }));
+      for (let i = 0; i < itemsInNewOrder.length; i++) {
+        const item = itemsInNewOrder[i];
 
-      for (const row of updates) {
         const { error } = await supabase
           .from("queue_items")
-          .update({ position: row.position })
-          .eq("id", row.id);
+          .update({ position: i + 1 })
+          .eq("id", item.id);
 
         if (error) throw error;
       }
@@ -121,7 +116,10 @@ export default function QueuePanel({ roomId, isHost, onPlay }) {
     if (!isHost || busy || index <= 0) return;
 
     const next = [...queue];
-    [next[index - 1], next[index]] = [next[index], next[index - 1]];
+    const temp = next[index - 1];
+    next[index - 1] = next[index];
+    next[index] = temp;
+
     await renumberQueue(next);
   };
 
@@ -129,23 +127,53 @@ export default function QueuePanel({ roomId, isHost, onPlay }) {
     if (!isHost || busy || index >= queue.length - 1) return;
 
     const next = [...queue];
-    [next[index], next[index + 1]] = [next[index + 1], next[index]];
+    const temp = next[index + 1];
+    next[index + 1] = next[index];
+    next[index] = temp;
+
     await renumberQueue(next);
+  };
+
+  const buttonStyle = {
+    border: "none",
+    borderRadius: 14,
+    padding: "10px 12px",
+    background: "#f3f4f6",
+    color: "#111827",
+    fontWeight: 800,
+    fontSize: 14,
+    cursor: busy ? "not-allowed" : "pointer",
   };
 
   return (
     <div
       style={{
+        width: "100%",
+        maxWidth: 520,
+        margin: "0 auto",
         border: "1px solid #e5e7eb",
-        borderRadius: 18,
-        padding: 18,
-        background: "#fff",
+        borderRadius: 24,
+        padding: 16,
+        background: "#ffffff",
+        boxShadow: "0 20px 50px rgba(0,0,0,0.18)",
+        boxSizing: "border-box",
+        overflow: "hidden",
       }}
     >
-      <h3 style={{ marginTop: 0 }}>Queue ({queue.length})</h3>
+      <h3
+        style={{
+          margin: "0 0 14px",
+          fontSize: 28,
+          lineHeight: 1.1,
+          fontWeight: 900,
+          color: "#111827",
+        }}
+      >
+        Queue ({queue.length})
+      </h3>
 
       {loading ? (
-        <div>Loading queue...</div>
+        <div style={{ color: "#6b7280" }}>Loading queue...</div>
       ) : queue.length === 0 ? (
         <div style={{ color: "#6b7280" }}>Queue is empty</div>
       ) : (
@@ -155,18 +183,20 @@ export default function QueuePanel({ roomId, isHost, onPlay }) {
               key={item.id}
               style={{
                 border: "1px solid #e5e7eb",
-                borderRadius: 14,
-                padding: 10,
+                borderRadius: 18,
+                padding: 12,
                 display: "grid",
-                gridTemplateColumns: "100px 1fr",
-                gap: 10,
+                gridTemplateColumns: "100px minmax(0, 1fr)",
+                gap: 12,
+                background: "#fff",
+                boxSizing: "border-box",
               }}
             >
               <div
                 style={{
-                  width: "100%",
-                  aspectRatio: "16/9",
-                  borderRadius: 10,
+                  width: "100px",
+                  height: "60px",
+                  borderRadius: 14,
                   overflow: "hidden",
                   background: "#000",
                 }}
@@ -179,58 +209,88 @@ export default function QueuePanel({ roomId, isHost, onPlay }) {
                       width: "100%",
                       height: "100%",
                       objectFit: "cover",
+                      display: "block",
                     }}
                   />
                 ) : null}
               </div>
 
-              <div>
-                <div style={{ fontWeight: 800 }}>
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    fontWeight: 900,
+                    fontSize: 18,
+                    lineHeight: 1.15,
+                    color: "#111827",
+                    wordBreak: "break-word",
+                  }}
+                >
                   {item.title || item.video_id}
-                </div>
-
-                <div style={{ fontSize: 12, color: "#6b7280" }}>
-                  Added by {item.added_by_email || "unknown"}
-                </div>
-
-                <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
-                  Queue position: {normalizePosition(item, index)}
                 </div>
 
                 <div
                   style={{
+                    fontSize: 13,
+                    color: "#6b7280",
                     marginTop: 8,
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: 6,
+                    wordBreak: "break-word",
                   }}
                 >
-                  {isHost && (
-                    <>
-                      <button onClick={() => handlePlay(item.video_id)} disabled={busy}>
-                        Play
-                      </button>
-
-                      <button onClick={() => handleRemove(item.id)} disabled={busy}>
-                        Remove
-                      </button>
-
-                      <button
-                        disabled={busy || index === 0}
-                        onClick={() => moveUp(index)}
-                      >
-                        ↑
-                      </button>
-
-                      <button
-                        disabled={busy || index === queue.length - 1}
-                        onClick={() => moveDown(index)}
-                      >
-                        ↓
-                      </button>
-                    </>
-                  )}
+                  Added by {item.added_by_email || "unknown"}
                 </div>
+
+                <div
+                  style={{
+                    fontSize: 13,
+                    color: "#6b7280",
+                    marginTop: 4,
+                  }}
+                >
+                  Rank: {normalizePosition(item, index)}
+                </div>
+
+                {isHost && (
+                  <div
+                    style={{
+                      marginTop: 12,
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: 8,
+                    }}
+                  >
+                    <button
+                      onClick={() => handlePlay(item.video_id)}
+                      disabled={busy}
+                      style={buttonStyle}
+                    >
+                      Play
+                    </button>
+
+                    <button
+                      onClick={() => handleRemove(item.id)}
+                      disabled={busy}
+                      style={buttonStyle}
+                    >
+                      Remove
+                    </button>
+
+                    <button
+                      disabled={busy || index === 0}
+                      onClick={() => moveUp(index)}
+                      style={buttonStyle}
+                    >
+                      ↑
+                    </button>
+
+                    <button
+                      disabled={busy || index === queue.length - 1}
+                      onClick={() => moveDown(index)}
+                      style={buttonStyle}
+                    >
+                      ↓
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
