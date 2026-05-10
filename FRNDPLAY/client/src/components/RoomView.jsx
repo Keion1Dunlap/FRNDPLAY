@@ -451,8 +451,8 @@ const leaveRoom = () => {
       .from("room_queue")
       .select("*")
       .eq("room_id", roomRef.current.id)
-.order("position", { ascending: true });
-    if (fetchError) {
+.order("votes", { ascending: false })
+.order("position", { ascending: true });    if (fetchError) {
       console.error("fetchQueue error:", fetchError);
       return [];
     }
@@ -720,8 +720,17 @@ const leaveRoom = () => {
   const advanceToNextTrack = useCallback(async () => {
     if (!isHost || advancingRef.current) return;
 
-    const currentQueue = queueRef.current || [];
-    const next = currentQueue[0];
+    const currentQueue = [...(queueRef.current || [])];
+
+currentQueue.sort((a, b) => {
+  const voteDiff = (b.votes || 0) - (a.votes || 0);
+
+  if (voteDiff !== 0) return voteDiff;
+
+  return (a.position || 0) - (b.position || 0);
+});
+
+const next = currentQueue[0];
 
     if (!next) {
       try {
