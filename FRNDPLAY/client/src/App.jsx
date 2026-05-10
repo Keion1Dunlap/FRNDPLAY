@@ -131,8 +131,9 @@ export default function App() {
 };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-  };
+  window.location.href = "/";
+  await supabase.auth.signOut();
+};
 
   const handleJoinRoom = () => {
     if (!displayName.trim()) {

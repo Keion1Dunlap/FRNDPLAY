@@ -1109,11 +1109,19 @@ const addSearchResultToQueue = useCallback(
     ]
   );
 
-  const handleHostPlay = useCallback(() => {
-    if (!isHost || !playerRef.current || !currentVideoId) return;
-    playerRef.current.unMute?.();
-    playerRef.current.playVideo?.();
-  }, [currentVideoId, isHost]);
+  const handleHostPlay = useCallback(async () => {
+  if (!isHost) return;
+
+  if (!currentVideoId && queueRef.current.length > 0) {
+    await playQueueItemNow(queueRef.current[0]);
+    return;
+  }
+
+  if (!playerRef.current || !currentVideoId) return;
+
+  playerRef.current.unMute?.();
+  playerRef.current.playVideo?.();
+}, [currentVideoId, isHost, playQueueItemNow]);
 
   const handleHostPause = useCallback(() => {
     if (!isHost || !playerRef.current || !currentVideoId) return;
@@ -1376,19 +1384,20 @@ style={{
               <button
                 style={{
                   ...styles.primaryButton,
-                  ...(!isHost || !playerVideoId ? styles.disabledButton : {}),
-                }}
+...(
+  !isHost || (!playerVideoId && queue.length === 0)
+    ? styles.disabledButton
+    : {}
+),                }}
                 onClick={handleHostPlay}
-                disabled={!isHost || !playerVideoId}
-              >
+disabled={!isHost || (!playerVideoId && queue.length === 0)}              >
                 Play
               </button>
 
               <button
                 style={{
                   ...styles.primaryButton,
-                  ...(!isHost || !playerVideoId ? styles.disabledButton : {}),
-                }}
+...(!isHost || (!playerVideoId && queue.length === 0) ? styles.disabledButton : {}),                }}
                 onClick={handleHostPause}
                 disabled={!isHost || !playerVideoId}
               >
