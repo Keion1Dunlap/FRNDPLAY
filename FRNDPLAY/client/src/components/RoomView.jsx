@@ -1460,12 +1460,7 @@ style={styles.searchInput}    />
 
 <button
   style={styles.addButton}
-  onClick={() =>
-addSearchResultToQueue({      videoId,
-      title,
-      channelTitle: result?.snippet?.channelTitle,
-    })
-  }
+  onClick={() => addSearchResultToQueue(result)}
 >
     Add
   </button>
