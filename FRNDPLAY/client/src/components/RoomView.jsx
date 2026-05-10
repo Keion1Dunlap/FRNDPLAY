@@ -1404,23 +1404,22 @@ style={{
         const thumb = result?.snippet?.thumbnails?.medium?.url;
 
         return (
-          <div key={videoId} style={styles.searchResultItem}>
-            <img src={thumb} alt={title} style={styles.searchThumb} />
+<div style={styles.searchResultItem}>
+  <img
+    src={getYouTubeThumb(video.videoId)}
+    alt={video.title}
+    style={styles.searchThumb}
+  />
 
-            <div style={styles.searchMeta}>
-              <div style={styles.searchTitle}>{title}</div>
-              <div style={styles.searchChannel}>
-                {result?.snippet?.channelTitle}
-              </div>
-            </div>
+  <div style={styles.searchResultMeta}>
+    <div style={styles.searchResultTitle}>{video.title}</div>
+    <div style={styles.searchResultChannel}>{video.channelTitle}</div>
+  </div>
 
-            <button
-              style={styles.queueActionButton}
-              onClick={() => addSearchResultToQueue(result)}
-            >
-              Add
-            </button>
-          </div>
+  <button style={styles.addButton} onClick={() => addSong(video)}>
+    Add
+  </button>
+</div>
         );
       })}
     </div>
@@ -1555,9 +1554,11 @@ const styles = {
 },
 
 searchResultItem: {
-  display: "flex",
-  gap: "12px",
+  display: "grid",
+  gridTemplateColumns: "96px minmax(0, 1fr) 96px",
   alignItems: "center",
+  gap: "12px",
+  width: "100%",
   padding: "12px",
   borderRadius: "16px",
   background: "#f9fafb",
@@ -1579,9 +1580,11 @@ searchMeta: {
 
 searchTitle: {
   fontWeight: 900,
-  color: "#111827",
+color: "#111827",
   lineHeight: 1.2,
   wordBreak: "break-word",
+  width: "100%",
+minWidth: 0,
 },
 
 searchChannel: {
@@ -1839,12 +1842,11 @@ leaveButton: {
     fontWeight: 600,
   },
   queueItem: {
-    border: "1px solid #e5e7eb",
-    borderRadius: "24px",
-    padding: "16px",
-    marginBottom: "16px",
-    background: "#fff",
-  },
+  display: "flex",
+  alignItems: "center",
+  gap: "12px",
+  width: "100%",
+},
   queueItemTop: {
     display: "flex",
     gap: "14px",
@@ -1859,9 +1861,11 @@ leaveButton: {
     flexShrink: 0,
   },
   queueMeta: {
-    flex: 1,
-    minWidth: 0,
-  },
+  flex: 1,
+  minWidth: 0,
+  overflowWrap: "break-word",
+  wordBreak: "normal",
+},
   queueItemTitle: {
     fontSize: "1.2rem",
     fontWeight: 900,
