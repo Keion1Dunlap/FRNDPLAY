@@ -11,24 +11,36 @@ function makeCode(len = 6) {
   return out;
 }
 
-function getRoomCodeFromUrl() {
+function getRoomDataFromUrl() {
   const params = new URLSearchParams(window.location.search);
-  return (params.get("room") || "").trim().toUpperCase();
+
+  return {
+    room: (params.get("room") || "").trim().toUpperCase(),
+    name: (params.get("name") || "").trim(),
+  };
 }
 
 export default function App() {
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [roomCode, setRoomCode] = useState(getRoomCodeFromUrl());
-  const [joinCode, setJoinCode] = useState("");
+const initialData = getRoomDataFromUrl();
+
+const [roomCode, setRoomCode] = useState(initialData.room);  const [joinCode, setJoinCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [displayName, setDisplayName] = useState(
     localStorage.getItem("frndplay_display_name") || ""
   );
 
   useEffect(() => {
-    const syncRoomCodeFromUrl = () => setRoomCode(getRoomCodeFromUrl());
-    syncRoomCodeFromUrl();
+const syncRoomCodeFromUrl = () => {
+  const data = getRoomDataFromUrl();
+  setRoomCode(data.room);
+
+  if (data.name) {
+    setDisplayName(data.name);
+    localStorage.setItem("frndplay_display_name", data.name);
+  }
+};    syncRoomCodeFromUrl();
     window.addEventListener("popstate", syncRoomCodeFromUrl);
     return () => window.removeEventListener("popstate", syncRoomCodeFromUrl);
   }, []);
@@ -67,10 +79,15 @@ export default function App() {
   };
 
   const goToRoom = (code) => {
-    const normalized = code.trim().toUpperCase();
-    if (!normalized) return;
-    window.location.assign(`/?room=${encodeURIComponent(normalized)}`);
-  };
+  const normalized = code.trim().toUpperCase();
+  if (!normalized) return;
+
+  const name = displayName.trim();
+
+  window.location.assign(
+    `/?room=${encodeURIComponent(normalized)}&name=${encodeURIComponent(name)}`
+  );
+};
 
   const signInWithGoogle = async () => {
     await supabase.auth.signInWithOAuth({
