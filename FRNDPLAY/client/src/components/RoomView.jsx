@@ -117,10 +117,6 @@ iframe {
     padding: 12px !important;
   }
 
-  .queue-item-top {
-    flex-direction: column !important;
-  }
-
   .queue-thumb {
     width: 100% !important;
     height: auto !important;
@@ -1680,11 +1676,11 @@ overflowX: "hidden",
 
 layout: {
   display: "grid",
-  gridTemplateColumns: "minmax(0, 1.15fr) minmax(320px, 0.85fr)",
+  gridTemplateColumns: "minmax(0, 1fr)",
   gap: "20px",
   alignItems: "start",
   width: "100%",
-  maxWidth: "1400px",
+  maxWidth: "1100px",
   margin: "0 auto",
 },
   leftColumn: {
@@ -1693,9 +1689,10 @@ layout: {
   gap: "20px",
 },
   rightColumn: {
-    display: "flex",
-    flexDirection: "column",
-  },
+  display: "flex",
+  flexDirection: "column",
+  width: "100%",
+},
   headerBlock: {
     color: "white",
     padding: "8px 2px",
@@ -1904,11 +1901,12 @@ qrText: {
     color: "white",
   },
   queuePanel: {
-    background: "rgba(255,255,255,0.97)",
-    borderRadius: "30px",
-    padding: "24px",
-    boxShadow: "0 18px 40px rgba(0,0,0,0.2)",
-  },
+  background: "rgba(255,255,255,0.97)",
+  borderRadius: "30px",
+  padding: "24px",
+  boxShadow: "0 18px 40px rgba(0,0,0,0.2)",
+  width: "100%",
+},
   queueHeader: {
     fontSize: "2.2rem",
     fontWeight: 900,
@@ -1929,10 +1927,12 @@ qrText: {
   border: "1px solid #e5e7eb",
 },
   queueItemTop: {
-    display: "flex",
-    gap: "14px",
-    alignItems: "flex-start",
-  },
+  display: "grid",
+  gridTemplateColumns: "132px minmax(0, 1fr)",
+  gap: "14px",
+  alignItems: "start",
+  width: "100%",
+},
   queueThumb: {
     width: "132px",
     height: "76px",
@@ -1969,7 +1969,7 @@ qrText: {
   },
   queueActions: {
   display: "grid",
-  gridTemplateColumns: "repeat(3, 1fr)",
+  gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
   gap: "8px",
   marginTop: "12px",
   paddingLeft: 0,
