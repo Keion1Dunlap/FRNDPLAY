@@ -1388,8 +1388,7 @@ style={{
         if (e.key === "Enter") searchYouTube();
       }}
       placeholder="Search for a song or video"
-      style={styles.input}
-    />
+style={styles.searchInput}    />
 
     <button style={styles.addButton} onClick={searchYouTube}>
       {searchLoading ? "Searching..." : "Search"}
@@ -1424,8 +1423,7 @@ style={{
 <button
   style={styles.addButton}
   onClick={() =>
-    addSong({
-      videoId,
+addSearchResultToQueue({      videoId,
       title,
       channelTitle: result?.snippet?.channelTitle,
     })
@@ -1815,18 +1813,28 @@ leaveButton: {
     boxShadow: "0 18px 40px rgba(0,0,0,0.2)",
   },
   addRow: {
-    display: "flex",
-    gap: "12px",
-  },
-  input: {
-    flex: 1,
-    borderRadius: "15px",
-    border: "1px solid #d1d5db",
-    padding: "13px 15px",
-    fontSize: "1rem",
-    outline: "none",
-    background: "white",
-  },
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) 180px",
+  gap: "12px",
+  alignItems: "center",
+  width: "100%",
+},
+  searchInput: {
+  flex: 1,
+  minWidth: 0,
+  width: "100%",
+  height: "56px",
+  borderRadius: "18px",
+  border: "1px solid #d1d5db",
+  padding: "0 16px",
+  fontSize: "16px",
+  fontWeight: 700,
+  color: "#111827",
+  background: "#ffffff",
+  caretColor: "#111827",
+  WebkitTextFillColor: "#111827",
+  outline: "none",
+},
   addButton: {
     border: "none",
     borderRadius: "15px",
