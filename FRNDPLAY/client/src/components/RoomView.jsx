@@ -1271,9 +1271,35 @@ return (
         <div className="room-left" style={styles.leftColumn}>
           <div style={styles.headerBlock}>
             <div style={styles.roomTitleRow}>
-<h1 className="room-title" style={styles.roomTitle}>Room: {roomCode}</h1>              <button style={styles.copyButton} onClick={copyRoomLink}>
-                Copy Link
-              </button>
+  <h1 className="room-title" style={styles.roomTitle}>
+    Room: {roomCode}
+  </h1>
+
+  <button style={styles.copyButton} onClick={copyRoomLink}>
+    Copy Link
+  </button>
+
+  <button
+    style={styles.shareButton}
+    onClick={async () => {
+      const url = `${window.location.origin}/?room=${roomCode}`;
+
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: "Join my FRNDPLAY room",
+            text: `Join my FRNDPLAY room: ${roomCode}`,
+            url,
+          });
+        } catch {}
+      } else {
+        navigator.clipboard.writeText(url);
+        alert("Invite link copied!");
+      }
+    }}
+  >
+    Share Room
+  </button>
               <button style={styles.leaveButton} onClick={leaveRoom}>
   Leave Room
 </button>
@@ -1818,6 +1844,16 @@ leaveButton: {
   gap: "12px",
   alignItems: "center",
   width: "100%",
+},
+shareButton: {
+  width: "100%",
+  padding: "12px",
+  borderRadius: "12px",
+  border: "none",
+  background: "#111827",
+  color: "white",
+  fontWeight: 900,
+  cursor: "pointer",
 },
   searchInput: {
   flex: 1,
