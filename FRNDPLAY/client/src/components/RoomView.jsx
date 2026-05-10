@@ -926,8 +926,9 @@ added_by_name: displayName.trim() || authUserEmail || "Guest",        position: 
         .from("room_queue")
         .insert([payload]);
 
-      if (insertError) throw insertError;
-
+setSearchResults([]);
+setSearchQuery("");
+alert("Song added to queue!");
       setVideoInput("");
     } catch (err) {
       console.error("addVideoToQueue error:", err);
