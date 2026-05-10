@@ -876,13 +876,15 @@ const next = currentQueue[0];
         .eq("id", item.id);
 
       if (updateError) throw updateError;
+      const latest = await fetchQueue();
+setQueue(latest);
+queueRef.current = latest;
     } catch (err) {
       console.error("upvoteQueueItem error:", err);
       alert(err.message || "Failed to upvote.");
     }
   },
-  [authUserId]
-);
+[authUserId, fetchQueue]);
 
   const addVideoToQueue = useCallback(async () => {
     const videoId = extractYouTubeId(videoInput);
