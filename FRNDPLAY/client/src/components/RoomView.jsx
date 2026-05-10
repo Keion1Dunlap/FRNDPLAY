@@ -1382,27 +1382,37 @@ style={{
 
 <div className="controls-card" style={styles.controlsCard}>            <div style={styles.controlsRow}>
               <button
-                style={{
-                  ...styles.primaryButton,
-...(
-  !isHost || (!playerVideoId && queue.length === 0)
-    ? styles.disabledButton
-    : {}
-),                }}
-                onClick={handleHostPlay}
-disabled={!isHost || (!playerVideoId && queue.length === 0)}              >
-                Play
-              </button>
+  style={{
+    ...styles.primaryButton,
+    opacity:
+      !isHost || (!playerVideoId && queue.length === 0)
+        ? 0.45
+        : 1,
+    cursor:
+      !isHost || (!playerVideoId && queue.length === 0)
+        ? "not-allowed"
+        : "pointer",
+  }}
+  onClick={handleHostPlay}
+  disabled={!isHost || (!playerVideoId && queue.length === 0)}
+>
+  Play
+</button>
 
               <button
-                style={{
-                  ...styles.primaryButton,
-...(!isHost || (!playerVideoId && queue.length === 0) ? styles.disabledButton : {}),                }}
-                onClick={handleHostPause}
-                disabled={!isHost || !playerVideoId}
-              >
-                Pause
-              </button>
+  style={{
+    ...styles.primaryButton,
+    opacity: !isHost || !playerVideoId ? 0.45 : 1,
+    cursor:
+      !isHost || !playerVideoId
+        ? "not-allowed"
+        : "pointer",
+  }}
+  onClick={handleHostPause}
+  disabled={!isHost || !playerVideoId}
+>
+  Pause
+</button>
               <button
   style={{
     ...styles.secondaryButton,
