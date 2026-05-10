@@ -1406,17 +1406,31 @@ style={{
         return (
 <div style={styles.searchResultItem}>
   <img
-    src={getYouTubeThumb(video.videoId)}
-    alt={video.title}
-    style={styles.searchThumb}
-  />
+  src={getYouTubeThumb(videoId)}
+  alt={title}
+  style={styles.searchThumb}
+/>
 
-  <div style={styles.searchResultMeta}>
-    <div style={styles.searchResultTitle}>{video.title}</div>
-    <div style={styles.searchResultChannel}>{video.channelTitle}</div>
+<div style={styles.searchResultMeta}>
+  <div style={styles.searchResultTitle}>
+    {title}
   </div>
 
-  <button style={styles.addButton} onClick={() => addSong(video)}>
+  <div style={styles.searchResultChannel}>
+    {result?.snippet?.channelTitle}
+  </div>
+</div>
+
+<button
+  style={styles.addButton}
+  onClick={() =>
+    addSong({
+      videoId,
+      title,
+      channelTitle: result?.snippet?.channelTitle,
+    })
+  }
+>
     Add
   </button>
 </div>
