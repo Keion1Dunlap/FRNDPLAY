@@ -2,22 +2,37 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import YouTube from "react-youtube";
 import { supabase } from "../supabase";
 const responsiveCss = `
-@media (max-width: 900px) {
-  body {
-    overflow-x: hidden;
-  }
+* {
+  box-sizing: border-box;
+}
 
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+iframe {
+  max-width: 100% !important;
+}
+
+@media (max-width: 900px) {
   .room-page {
+    width: 100% !important;
+    max-width: 100% !important;
     padding: 12px !important;
     overflow-x: hidden !important;
   }
 
   .room-layout {
-    display: flex !important;
-    flex-direction: column !important;
+  display: grid !important;
+  grid-template-columns: 1fr !important;
     width: 100% !important;
     max-width: 100% !important;
     gap: 16px !important;
+    margin: 0 !important;
   }
 
   .room-left,
@@ -28,16 +43,8 @@ const responsiveCss = `
   }
 
   .room-title {
-    font-size: 2rem !important;
-  }
-
-  .now-playing-row {
-    flex-direction: column !important;
-    align-items: flex-start !important;
-  }
-
-  .now-playing-title {
-    font-size: 1.5rem !important;
+    font-size: 1.8rem !important;
+    line-height: 1.05 !important;
     word-break: break-word !important;
   }
 
@@ -48,64 +55,90 @@ const responsiveCss = `
   .now-playing-card {
     width: 100% !important;
     max-width: 100% !important;
-    box-sizing: border-box !important;
+    padding: 14px !important;
+    border-radius: 22px !important;
+    overflow: hidden !important;
+  }
+
+  .now-playing-row {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+
+  .now-playing-title {
+    font-size: 1.35rem !important;
+    line-height: 1.15 !important;
+  }
+
+  .now-playing-card img {
+    width: 100% !important;
+    height: auto !important;
+    max-height: 180px !important;
+  }
+
+  .controls-card > div {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+
+  .controls-card button {
+    width: 100% !important;
+    padding: 11px 8px !important;
+    font-size: 0.9rem !important;
+  }
+
+  .add-card > div:last-child {
+    flex-direction: column !important;
+  }
+
+  .add-card input,
+  .add-card button {
+    width: 100% !important;
+  }
+
+  .player-card iframe {
+    width: 100% !important;
+    height: 220px !important;
   }
 
   .queue-panel {
-  width: 100% !important;
-  max-width: 100% !important;
-  margin: 0 auto !important;
-  padding: 14px !important;
-  border-radius: 24px !important;
-  box-sizing: border-box !important;
-}
+    margin: 0 !important;
+  }
 
-.queue-item {
-  width: 100% !important;
-  max-width: 100% !important;
-  padding: 12px !important;
-  box-sizing: border-box !important;
-}
+  .queue-header {
+    font-size: 1.6rem !important;
+    margin-bottom: 0 !important;
+  }
 
-.queue-item-top {
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 10px !important;
-}
+  .queue-item {
+    width: 100% !important;
+    padding: 12px !important;
+  }
 
-.queue-thumb {
-  width: 100% !important;
-  height: auto !important;
-  max-height: 170px !important;
-  object-fit: cover !important;
-}
+  .queue-item-top {
+    flex-direction: column !important;
+  }
 
-.queue-actions {
-  padding-left: 0 !important;
-  display: grid !important;
-  grid-template-columns: 1fr 1fr !important;
-  gap: 8px !important;
-  width: 100% !important;
-}
+  .queue-thumb {
+    width: 100% !important;
+    height: auto !important;
+    max-height: 170px !important;
+  }
 
-.queue-actions button {
-  width: 100% !important;
-  min-width: 0 !important;
-  padding: 10px 8px !important;
-  font-size: 0.9rem !important;
-}
+  .queue-actions {
+    padding-left: 0 !important;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
 
-.queue-header {
-  font-size: 1.8rem !important;
-}
-
-.queue-title {
-  font-size: 1.1rem !important;
-  word-break: break-word !important;
-}
-
-  iframe {
-    max-width: 100% !important;
+  .queue-actions button {
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 10px 8px !important;
+    font-size: 0.9rem !important;
   }
 }
 `;
@@ -201,36 +234,39 @@ export default function RoomView({ displayName = "" }) {
 
   const sessionId = useMemo(() => getSessionId(), []);
   
-  const endRoom = async () => {
-  if (!isHost || !roomRef.current?.id) return;
-
-  const confirmed = window.confirm(
-    "End this room? This will remove the room and disconnect everyone."
-  );
-  if (!confirmed) return;
-
+const endRoom = async () => {
   try {
-    const roomId = roomRef.current.id;
+    if (!room?.id) {
+      alert("No room found");
+      return;
+    }
 
-    // delete queue first
-    await supabase
-      .from("room_queue")
-      .delete()
-      .eq("room_id", roomId);
+    const confirmed = window.confirm(
+      "Are you sure you want to end this room?"
+    );
 
-    // delete room
+    if (!confirmed) return;
+
     const { error } = await supabase
       .from("rooms")
       .delete()
-      .eq("id", roomId);
+      .eq("id", room.id);
 
-    if (error) throw error;
+    if (error) {
+      console.error("Delete room error:", error);
+      alert(error.message);
+      return;
+    }
 
-    // redirect
-    window.location.href = "/";
+    // leave room screen
+    setRoom(null);
+
+    // optional refresh
+    window.location.reload();
+
   } catch (err) {
-    console.error("endRoom error:", err);
-    alert("Failed to end room.");
+    console.error(err);
+    alert("Something went wrong ending the room.");
   }
 };
   const [room, setRoom] = useState(null);
@@ -244,6 +280,9 @@ export default function RoomView({ displayName = "" }) {
   const [authUserId, setAuthUserId] = useState(null);
   const [authUserEmail, setAuthUserEmail] = useState("");
   const [userVotes, setUserVotes] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
+const [searchResults, setSearchResults] = useState([]);
+const [searchLoading, setSearchLoading] = useState(false);
   const playerRef = useRef(null);
   const hostSyncIntervalRef = useRef(null);
   const guestSyncIntervalRef = useRef(null);
@@ -353,7 +392,9 @@ export default function RoomView({ displayName = "" }) {
       alert("Could not copy link. Copy it manually.");
     }
   }, []);
-
+const leaveRoom = () => {
+  window.location.href = "/";
+};
   const releaseRemoteActionLockSoon = useCallback(() => {
     window.setTimeout(() => {
       remoteActionLockRef.current = false;
@@ -413,7 +454,6 @@ export default function RoomView({ displayName = "" }) {
       .from("room_queue")
       .select("*")
       .eq("room_id", roomRef.current.id)
-.order("votes", { ascending: false })
 .order("position", { ascending: true });
     if (fetchError) {
       console.error("fetchQueue error:", fetchError);
@@ -927,7 +967,97 @@ added_by_name: displayName.trim() || authUserEmail || "Guest",        position: 
     },
     [isHost]
   );
+const searchYouTube = useCallback(async () => {
+  if (!searchQuery.trim()) {
+    alert("Search for a song or video.");
+    return;
+  }
 
+  const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
+
+  if (!apiKey) {
+    alert("Missing YouTube API key.");
+    return;
+  }
+
+  setSearchLoading(true);
+
+  try {
+    const params = new URLSearchParams({
+      part: "snippet",
+      q: searchQuery.trim(),
+      type: "video",
+      maxResults: "8",
+      key: apiKey,
+    });
+
+    const res = await fetch(
+      `https://www.googleapis.com/youtube/v3/search?${params.toString()}`
+    );
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data?.error?.message || "YouTube search failed.");
+    }
+
+    setSearchResults(data.items || []);
+  } catch (err) {
+    console.error("searchYouTube error:", err);
+    alert(err.message || "Failed to search YouTube.");
+  } finally {
+    setSearchLoading(false);
+  }
+}, [searchQuery]);
+const addSearchResultToQueue = useCallback(
+  async (result) => {
+    const videoId = result?.id?.videoId;
+    const title = result?.snippet?.title;
+
+    if (!videoId) {
+      alert("Invalid YouTube result.");
+      return;
+    }
+
+    if (!roomRef.current?.id) {
+      alert("Room is not ready yet.");
+      return;
+    }
+
+    try {
+      const { data: existing, error: fetchError } = await supabase
+        .from("room_queue")
+        .select("position")
+        .eq("room_id", roomRef.current.id)
+        .order("position", { ascending: false })
+        .limit(1);
+
+      if (fetchError) throw fetchError;
+
+      const highestPosition = existing?.[0]?.position || 0;
+
+      const payload = {
+        room_id: roomRef.current.id,
+        video_id: videoId,
+        title: title || `YouTube Video (${videoId})`,
+        added_by: authUserId || sessionId,
+        added_by_name: displayName.trim() || authUserEmail || "Guest",
+        position: highestPosition + 1,
+        votes: 0,
+      };
+
+      const { error: insertError } = await supabase
+        .from("room_queue")
+        .insert([payload]);
+
+      if (insertError) throw insertError;
+    } catch (err) {
+      console.error("addSearchResultToQueue error:", err);
+      alert(err.message || "Failed to add video.");
+    }
+  },
+  [authUserEmail, authUserId, displayName, sessionId]
+);
   const handlePlayerStateChange = useCallback(
     async (event) => {
       const activeRoom = roomRef.current;
@@ -1124,22 +1254,29 @@ added_by_name: displayName.trim() || authUserEmail || "Guest",        position: 
     );
   }
 
-  if (error) {
-    return (
-      <div style={styles.page}>
-        <div style={styles.statusCard}>{error}</div>
-      </div>
-    );
-  }
-
+ if (error) {
   return (
-    <div style={styles.page}>
-<div className="room-layout" style={styles.layout}>        <div className="room-left" style={styles.leftColumn}>
+    <div className="room-page" style={styles.page}>
+      <style>{responsiveCss}</style>
+      <div style={styles.statusCard}>{error}</div>
+    </div>
+  );
+}
+
+return (
+  <div className="room-page" style={styles.page}>
+      <style>{responsiveCss}</style>
+
+      <div className="room-layout" style={styles.layout}>
+        <div className="room-left" style={styles.leftColumn}>
           <div style={styles.headerBlock}>
             <div style={styles.roomTitleRow}>
 <h1 className="room-title" style={styles.roomTitle}>Room: {roomCode}</h1>              <button style={styles.copyButton} onClick={copyRoomLink}>
                 Copy Link
               </button>
+              <button style={styles.leaveButton} onClick={leaveRoom}>
+  Leave Room
+</button>
               {isHost && (
   <button
 style={{
@@ -1240,28 +1377,60 @@ style={{
             </div>
           </div>
 
-<div className="add-card" style={styles.addCard}>            <div style={styles.sectionHeading}>Add YouTube link</div>
+<div className="add-card" style={styles.addCard}>
+  <div style={styles.sectionHeading}>Search YouTube</div>
 
-            <div style={styles.addRow}>
-              <input
-                value={videoInput}
-                onChange={(e) => setVideoInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") addVideoToQueue();
-                }}
-                placeholder="Paste a YouTube URL or video ID"
-                style={styles.input}
-              />
+  <div style={styles.addRow}>
+    <input
+      value={searchQuery}
+      onChange={(e) => setSearchQuery(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") searchYouTube();
+      }}
+      placeholder="Search for a song or video"
+      style={styles.input}
+    />
 
-              <button style={styles.addButton} onClick={addVideoToQueue}>
-                Add
-              </button>
+    <button style={styles.addButton} onClick={searchYouTube}>
+      {searchLoading ? "Searching..." : "Search"}
+    </button>
+  </div>
+
+  {searchResults.length > 0 && (
+    <div style={styles.searchResults}>
+      {searchResults.map((result) => {
+        const videoId = result?.id?.videoId;
+        const title = result?.snippet?.title;
+        const thumb = result?.snippet?.thumbnails?.medium?.url;
+
+        return (
+          <div key={videoId} style={styles.searchResultItem}>
+            <img src={thumb} alt={title} style={styles.searchThumb} />
+
+            <div style={styles.searchMeta}>
+              <div style={styles.searchTitle}>{title}</div>
+              <div style={styles.searchChannel}>
+                {result?.snippet?.channelTitle}
+              </div>
             </div>
+
+            <button
+              style={styles.queueActionButton}
+              onClick={() => addSearchResultToQueue(result)}
+            >
+              Add
+            </button>
           </div>
+        );
+      })}
+    </div>
+  )}
+</div>
         </div>
 
-<div className="room-right" style={styles.rightColumn}>          <div className="queue-panel" style={styles.queuePanel}>
-<div style={styles.queueHeaderRow}>
+        <div className="room-right" style={styles.rightColumn}>
+  <div className="queue-panel" style={styles.queuePanel}>
+    <div style={styles.queueHeaderRow}>
 <div className="queue-header" style={styles.queueHeader}>    Queue ({queue.length})
   </div>
 
@@ -1376,9 +1545,51 @@ Rank: {index + 1}                        </div>
       </div>
     </div>
   );
-}
-
+}  
 const styles = {
+  searchResults: {
+  display: "flex",
+  flexDirection: "column",
+  gap: "12px",
+  marginTop: "16px",
+},
+
+searchResultItem: {
+  display: "flex",
+  gap: "12px",
+  alignItems: "center",
+  padding: "12px",
+  borderRadius: "16px",
+  background: "#f9fafb",
+  border: "1px solid #e5e7eb",
+},
+
+searchThumb: {
+  width: "96px",
+  height: "54px",
+  borderRadius: "10px",
+  objectFit: "cover",
+  flexShrink: 0,
+},
+
+searchMeta: {
+  flex: 1,
+  minWidth: 0,
+},
+
+searchTitle: {
+  fontWeight: 900,
+  color: "#111827",
+  lineHeight: 1.2,
+  wordBreak: "break-word",
+},
+
+searchChannel: {
+  marginTop: "4px",
+  color: "#6b7280",
+  fontSize: "0.9rem",
+  fontWeight: 600,
+},
   endRoomButton: {
   border: "none",
   borderRadius: "14px",
@@ -1409,26 +1620,30 @@ clearQueueButton: {
   color: "#991b1b",
 },
   page: {
-    minHeight: "100vh",
-    background:
-      "radial-gradient(circle at top left, #16357a 0%, #0a1b4d 35%, #031031 70%, #020816 100%)",
-    padding: "30px",
-    boxSizing: "border-box",
-    color: "#0f172a",
-  },
-  layout: {
+  minHeight: "100vh",
+  width: "100%",
+overflowX: "hidden",
+  background:
+    "radial-gradient(circle at top left, #16357a 0%, #0a1b4d 35%, #031031 70%, #020816 100%)",
+  padding: "30px",
+  boxSizing: "border-box",
+  color: "#0f172a",
+},
+
+layout: {
   display: "grid",
-  gridTemplateColumns: "minmax(0, 1.45fr) minmax(340px, 0.95fr)",
-  gap: "28px",
+  gridTemplateColumns: "minmax(0, 1.15fr) minmax(320px, 0.85fr)",
+  gap: "20px",
   alignItems: "start",
-  maxWidth: "1450px",
+  width: "100%",
+  maxWidth: "1400px",
   margin: "0 auto",
 },
   leftColumn: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "20px",
-  },
+  display: "flex",
+  flexDirection: "column",
+  gap: "20px",
+},
   rightColumn: {
     display: "flex",
     flexDirection: "column",
@@ -1450,15 +1665,26 @@ clearQueueButton: {
     lineHeight: 1,
   },
   copyButton: {
-    border: "none",
-    borderRadius: "14px",
-    padding: "10px 14px",
-    fontWeight: 900,
-    fontSize: "0.9rem",
-    cursor: "pointer",
-    background: "white",
-    color: "#111827",
-  },
+  border: "none",
+  borderRadius: "14px",
+  padding: "10px 14px",
+  fontWeight: 900,
+  fontSize: "0.9rem",
+  cursor: "pointer",
+  background: "white",
+  color: "#111827",
+},
+
+leaveButton: {
+  border: "none",
+  borderRadius: "14px",
+  padding: "10px 14px",
+  fontWeight: 900,
+  fontSize: "0.9rem",
+  cursor: "pointer",
+  background: "#e5e7eb",
+  color: "#111827",
+},
   roleText: {
     margin: "14px 0 6px",
     fontSize: "1.25rem",

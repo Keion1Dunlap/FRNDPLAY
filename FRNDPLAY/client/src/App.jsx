@@ -27,16 +27,10 @@ export default function App() {
   );
 
   useEffect(() => {
-    const syncRoomCodeFromUrl = () => {
-      setRoomCode(getRoomCodeFromUrl());
-    };
-
+    const syncRoomCodeFromUrl = () => setRoomCode(getRoomCodeFromUrl());
     syncRoomCodeFromUrl();
     window.addEventListener("popstate", syncRoomCodeFromUrl);
-
-    return () => {
-      window.removeEventListener("popstate", syncRoomCodeFromUrl);
-    };
+    return () => window.removeEventListener("popstate", syncRoomCodeFromUrl);
   }, []);
 
   useEffect(() => {
@@ -48,7 +42,6 @@ export default function App() {
       } = await supabase.auth.getSession();
 
       if (!mounted) return;
-
       setSession(session);
       setAuthLoading(false);
     }
@@ -109,17 +102,19 @@ export default function App() {
     try {
       const code = makeCode();
 
-      await supabase.from("rooms").insert([
+      const { error } = await supabase.from("rooms").insert([
         {
           code,
           owner_id: session.user.id,
         },
       ]);
 
+      if (error) throw error;
+
       goToRoom(code);
     } catch (err) {
       console.error(err);
-      alert("Failed to create room.");
+      alert(err.message || "Failed to create room.");
     } finally {
       setBusy(false);
     }
@@ -127,123 +122,171 @@ export default function App() {
 
   if (authLoading) return null;
 
-  // ✅ ROOM VIEW
   if (roomCode) {
     return (
       <div style={styles.page}>
-        <div style={styles.topBar}>
-          <div style={styles.brand}>FRNDPLAY</div>
+        <div style={styles.shell}>
+          <TopBar
+            session={session}
+            displayName={displayName}
+            saveDisplayName={saveDisplayName}
+            signInWithGoogle={signInWithGoogle}
+            signOut={signOut}
+          />
 
-          <div style={styles.authBlock}>
+          <main style={styles.main}>
             {session ? (
-              <>
-                <input
-                  value={displayName}
-                  onChange={(e) => saveDisplayName(e.target.value)}
-                  placeholder="Name"
-                  style={styles.nameInput}
-                />
-
-                <button style={styles.secondaryButton} onClick={signOut}>
-                  Sign out
-                </button>
-              </>
+              <RoomView displayName={displayName} />
             ) : (
-              <button style={styles.primaryButton} onClick={signInWithGoogle}>
-                Continue with Google
-              </button>
+              <div style={styles.card}>
+                <h2 style={styles.heading}>Join Room {roomCode}</h2>
+                <button
+                  style={styles.primaryButtonLarge}
+                  onClick={signInWithGoogle}
+                >
+                  Continue with Google
+                </button>
+              </div>
             )}
-          </div>
+          </main>
         </div>
-
-        {session ? (
-          <RoomView displayName={displayName} />
-        ) : (
-          <div style={styles.card}>
-            <h2>Join Room {roomCode}</h2>
-            <button style={styles.primaryButtonLarge} onClick={signInWithGoogle}>
-              Continue with Google
-            </button>
-          </div>
-        )}
       </div>
     );
   }
 
-  // ✅ LANDING
   return (
     <div style={styles.page}>
-      <div style={styles.topBar}>
-        <div style={styles.brand}>FRNDPLAY</div>
-
-        <div style={styles.authBlock}>
-          {session ? (
-            <>
-              <input
-                value={displayName}
-                onChange={(e) => saveDisplayName(e.target.value)}
-                placeholder="Name"
-                style={styles.nameInput}
-              />
-
-              <button style={styles.secondaryButton} onClick={signOut}>
-                Sign out
-              </button>
-            </>
-          ) : (
-            <button style={styles.primaryButton} onClick={signInWithGoogle}>
-              Continue with Google
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div style={styles.card}>
-        <h1>Welcome to FRNDPLAY</h1>
-
-        <input
-          value={joinCode}
-          onChange={(e) => setJoinCode(e.target.value)}
-          placeholder="Room Code"
-          style={styles.input}
+      <div style={styles.shell}>
+        <TopBar
+          session={session}
+          displayName={displayName}
+          saveDisplayName={saveDisplayName}
+          signInWithGoogle={signInWithGoogle}
+          signOut={signOut}
         />
 
-        <button style={styles.primaryButtonLarge} onClick={handleJoinRoom}>
-          Join Room
-        </button>
+        <main style={styles.landingMain}>
+          <div style={styles.card}>
+            <h1 style={styles.heading}>Welcome to FRNDPLAY</h1>
 
-        <button
-          style={styles.primaryButtonLarge}
-          onClick={handleCreateRoom}
-          disabled={busy}
-        >
-          {busy ? "Creating..." : "Create Room"}
-        </button>
+            <input
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value)}
+              placeholder="Room Code"
+              style={styles.input}
+            />
+
+            <button style={styles.primaryButtonLarge} onClick={handleJoinRoom}>
+              Join Room
+            </button>
+
+            <button
+              style={{
+                ...styles.primaryButtonLarge,
+                opacity: busy ? 0.7 : 1,
+              }}
+              onClick={handleCreateRoom}
+              disabled={busy}
+            >
+              {busy ? "Creating..." : "Create Room"}
+            </button>
+          </div>
+        </main>
       </div>
     </div>
+  );
+}
+
+function TopBar({
+  session,
+  displayName,
+  saveDisplayName,
+  signInWithGoogle,
+  signOut,
+}) {
+  return (
+    <header style={styles.topBar}>
+      <div style={styles.brand}>FRNDPLAY</div>
+
+      <div style={styles.authBlock}>
+        {session ? (
+          <>
+            <input
+              value={displayName}
+              onChange={(e) => saveDisplayName(e.target.value)}
+              placeholder="Name"
+              style={styles.nameInput}
+            />
+
+            <button style={styles.secondaryButton} onClick={signOut}>
+              Sign out
+            </button>
+          </>
+        ) : (
+          <button style={styles.primaryButton} onClick={signInWithGoogle}>
+            Continue with Google
+          </button>
+        )}
+      </div>
+    </header>
   );
 }
 
 const styles = {
   page: {
     minHeight: "100vh",
-    padding: "16px",
+    width: "100%",
+    maxWidth: "100%",
+    overflowX: "hidden",
+    boxSizing: "border-box",
+    padding: "12px",
     background: "#0f172a",
     color: "white",
   },
 
+  shell: {
+    width: "100%",
+    maxWidth: "1100px",
+    margin: "0 auto",
+    overflowX: "hidden",
+    boxSizing: "border-box",
+  },
+
+  main: {
+    width: "100%",
+    maxWidth: "100%",
+    overflowX: "hidden",
+    boxSizing: "border-box",
+  },
+
+  landingMain: {
+    width: "100%",
+    maxWidth: "100%",
+    minHeight: "calc(100vh - 90px)",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    overflowX: "hidden",
+    boxSizing: "border-box",
+  },
+
   topBar: {
+    width: "100%",
+    maxWidth: "100%",
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: "16px",
     flexWrap: "wrap",
     gap: "10px",
+    boxSizing: "border-box",
   },
 
   brand: {
     fontSize: "22px",
     fontWeight: "bold",
+    lineHeight: 1,
+    whiteSpace: "nowrap",
   },
 
   authBlock: {
@@ -251,57 +294,78 @@ const styles = {
     gap: "8px",
     flexWrap: "wrap",
     width: "100%",
-    maxWidth: "320px",
+    maxWidth: "340px",
+    boxSizing: "border-box",
   },
 
   nameInput: {
-    flex: 1,
+    flex: "1 1 160px",
+    minWidth: 0,
     padding: "10px",
     borderRadius: "10px",
     border: "none",
+    boxSizing: "border-box",
   },
 
   card: {
+    width: "100%",
+    maxWidth: "400px",
     background: "white",
     color: "black",
     padding: "20px",
     borderRadius: "16px",
-    maxWidth: "400px",
     margin: "0 auto",
     display: "flex",
     flexDirection: "column",
     gap: "10px",
+    boxSizing: "border-box",
+    overflow: "hidden",
+  },
+
+  heading: {
+    margin: 0,
+    lineHeight: 1.15,
   },
 
   input: {
+    width: "100%",
+    minWidth: 0,
     padding: "10px",
     borderRadius: "10px",
     border: "1px solid #ccc",
+    boxSizing: "border-box",
   },
 
   primaryButton: {
-    padding: "10px",
+    flex: "0 0 auto",
+    padding: "10px 12px",
     borderRadius: "10px",
     background: "#2563eb",
     color: "white",
     border: "none",
     cursor: "pointer",
+    boxSizing: "border-box",
   },
 
   primaryButtonLarge: {
+    width: "100%",
     padding: "12px",
     borderRadius: "10px",
     background: "#2563eb",
     color: "white",
     border: "none",
     cursor: "pointer",
+    boxSizing: "border-box",
   },
 
   secondaryButton: {
-    padding: "10px",
+    flex: "0 0 auto",
+    padding: "10px 12px",
     borderRadius: "10px",
     background: "#e5e7eb",
+    color: "#111827",
     border: "none",
     cursor: "pointer",
+    boxSizing: "border-box",
   },
 };
