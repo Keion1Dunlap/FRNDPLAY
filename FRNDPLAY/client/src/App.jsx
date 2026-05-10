@@ -5,9 +5,11 @@ import RoomView from "./components/RoomView";
 function makeCode(len = 6) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let out = "";
+
   for (let i = 0; i < len; i++) {
     out += chars[Math.floor(Math.random() * chars.length)];
   }
+
   return out;
 }
 
@@ -21,27 +23,31 @@ function getRoomDataFromUrl() {
 }
 
 export default function App() {
+  const initialData = getRoomDataFromUrl();
+
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
-const initialData = getRoomDataFromUrl();
-
-const [roomCode, setRoomCode] = useState(initialData.room);  const [joinCode, setJoinCode] = useState("");
+  const [roomCode, setRoomCode] = useState(initialData.room);
+  const [joinCode, setJoinCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [displayName, setDisplayName] = useState(
-    localStorage.getItem("frndplay_display_name") || ""
+    initialData.name || localStorage.getItem("frndplay_display_name") || ""
   );
 
   useEffect(() => {
-const syncRoomCodeFromUrl = () => {
-  const data = getRoomDataFromUrl();
-  setRoomCode(data.room);
+    const syncRoomCodeFromUrl = () => {
+      const data = getRoomDataFromUrl();
+      setRoomCode(data.room);
 
-  if (data.name) {
-    setDisplayName(data.name);
-    localStorage.setItem("frndplay_display_name", data.name);
-  }
-};    syncRoomCodeFromUrl();
+      if (data.name) {
+        setDisplayName(data.name);
+        localStorage.setItem("frndplay_display_name", data.name);
+      }
+    };
+
+    syncRoomCodeFromUrl();
     window.addEventListener("popstate", syncRoomCodeFromUrl);
+
     return () => window.removeEventListener("popstate", syncRoomCodeFromUrl);
   }, []);
 
@@ -54,6 +60,7 @@ const syncRoomCodeFromUrl = () => {
       } = await supabase.auth.getSession();
 
       if (!mounted) return;
+
       setSession(session);
       setAuthLoading(false);
     }
@@ -79,15 +86,17 @@ const syncRoomCodeFromUrl = () => {
   };
 
   const goToRoom = (code) => {
-  const normalized = code.trim().toUpperCase();
-  if (!normalized) return;
+    const normalized = code.trim().toUpperCase();
+    if (!normalized) return;
 
-  const name = displayName.trim();
+    const name = displayName.trim();
 
-  window.location.assign(
-    `/?room=${encodeURIComponent(normalized)}&name=${encodeURIComponent(name)}`
-  );
-};
+    window.location.assign(
+      `/?room=${encodeURIComponent(normalized)}&name=${encodeURIComponent(
+        name
+      )}`
+    );
+  };
 
   const signInWithGoogle = async () => {
     await supabase.auth.signInWithOAuth({
@@ -101,14 +110,25 @@ const syncRoomCodeFromUrl = () => {
   };
 
   const handleJoinRoom = () => {
+    if (!displayName.trim()) {
+      alert("Enter your name.");
+      return;
+    }
+
     if (!joinCode.trim()) {
       alert("Enter a room code.");
       return;
     }
+
     goToRoom(joinCode);
   };
 
   const handleCreateRoom = async () => {
+    if (!displayName.trim()) {
+      alert("Enter your name.");
+      return;
+    }
+
     if (!session?.user?.id) {
       alert("Sign in first.");
       return;
@@ -157,6 +177,11 @@ const syncRoomCodeFromUrl = () => {
             ) : (
               <div style={styles.card}>
                 <h2 style={styles.heading}>Join Room {roomCode}</h2>
+
+                <p style={styles.cardText}>
+                  Sign in to join this room and add songs to the live queue.
+                </p>
+
                 <button
                   style={styles.primaryButtonLarge}
                   onClick={signInWithGoogle}
@@ -184,49 +209,52 @@ const syncRoomCodeFromUrl = () => {
 
         <main style={styles.landingMain}>
           <div style={styles.heroCard}>
-  <div style={styles.badge}>Live collaborative music rooms</div>
+            <div style={styles.badge}>Live collaborative music rooms</div>
 
-  <h1 style={styles.heroTitle}>Let everyone help control the music.</h1>
+            <h1 style={styles.heroTitle}>
+              Let everyone help control the music.
+            </h1>
 
-  <p style={styles.heroText}>
-    Create a room, share the link, and let friends search, add, vote, and queue songs together in real time.
-  </p>
+            <p style={styles.heroText}>
+              Create a room, share the link, and let friends search, add, vote,
+              and queue songs together in real time.
+            </p>
 
-  <input
-    value={displayName}
-    onChange={(e) => saveDisplayName(e.target.value)}
-    placeholder="Your name"
-    style={styles.input}
-  />
+            <input
+              value={displayName}
+              onChange={(e) => saveDisplayName(e.target.value)}
+              placeholder="Your name"
+              style={styles.input}
+            />
 
-  <input
-    value={joinCode}
-    onChange={(e) => setJoinCode(e.target.value)}
-    placeholder="Room Code"
-    style={styles.input}
-  />
+            <input
+              value={joinCode}
+              onChange={(e) => setJoinCode(e.target.value)}
+              placeholder="Room Code"
+              style={styles.input}
+            />
 
-  <button style={styles.primaryButtonLarge} onClick={handleJoinRoom}>
-    Join Room
-  </button>
+            <button style={styles.primaryButtonLarge} onClick={handleJoinRoom}>
+              Join Room
+            </button>
 
-  <button
-    style={{
-      ...styles.createButton,
-      opacity: busy ? 0.7 : 1,
-    }}
-    onClick={handleCreateRoom}
-    disabled={busy}
-  >
-    {busy ? "Creating..." : "Create Room"}
-  </button>
+            <button
+              style={{
+                ...styles.createButton,
+                opacity: busy ? 0.7 : 1,
+              }}
+              onClick={handleCreateRoom}
+              disabled={busy}
+            >
+              {busy ? "Creating..." : "Create Room"}
+            </button>
 
-  <div style={styles.featureList}>
-    <span>Search YouTube</span>
-    <span>Vote songs up</span>
-    <span>Host controls playback</span>
-  </div>
-</div>
+            <div style={styles.featureRow}>
+              <span>🎵 Live queue sync</span>
+              <span>👍 Song voting</span>
+              <span>📱 Mobile optimized</span>
+            </div>
+          </div>
         </main>
       </div>
     </div>
@@ -242,7 +270,10 @@ function TopBar({
 }) {
   return (
     <header style={styles.topBar}>
-      <div style={styles.brand}>FRNDPLAY</div>
+      <div>
+        <div style={styles.brand}>FRNDPLAY</div>
+        <div style={styles.brandSub}>Real-time collaborative music rooms</div>
+      </div>
 
       <div style={styles.authBlock}>
         {session ? (
@@ -298,10 +329,11 @@ const styles = {
   landingMain: {
     width: "100%",
     maxWidth: "100%",
-    minHeight: "calc(100vh - 90px)",
+    paddingTop: "40px",
+    paddingBottom: "40px",
     display: "flex",
     justifyContent: "center",
-    alignItems: "center",
+    alignItems: "flex-start",
     overflowX: "hidden",
     boxSizing: "border-box",
   },
@@ -319,73 +351,19 @@ const styles = {
   },
 
   brand: {
-    fontSize: "22px",
-    fontWeight: "bold",
+    fontSize: "30px",
+    fontWeight: 950,
     lineHeight: 1,
     whiteSpace: "nowrap",
+    letterSpacing: "-0.5px",
   },
-  heroCard: {
-  width: "100%",
-  maxWidth: "460px",
-  background: "white",
-  color: "#111827",
-  padding: "26px",
-  borderRadius: "24px",
-  margin: "0 auto",
-  display: "flex",
-  flexDirection: "column",
-  gap: "12px",
-  boxSizing: "border-box",
-  boxShadow: "0 24px 60px rgba(0,0,0,0.25)",
-},
 
-badge: {
-  alignSelf: "flex-start",
-  background: "#dbeafe",
-  color: "#1d4ed8",
-  borderRadius: "999px",
-  padding: "7px 12px",
-  fontSize: "13px",
-  fontWeight: 900,
-},
-
-heroTitle: {
-  margin: "4px 0 0",
-  fontSize: "38px",
-  lineHeight: 1,
-  fontWeight: 950,
-  letterSpacing: "-1px",
-},
-
-heroText: {
-  margin: "0 0 8px",
-  color: "#4b5563",
-  fontSize: "16px",
-  lineHeight: 1.45,
-  fontWeight: 600,
-},
-
-createButton: {
-  width: "100%",
-  padding: "12px",
-  borderRadius: "10px",
-  background: "#111827",
-  color: "white",
-  border: "none",
-  cursor: "pointer",
-  boxSizing: "border-box",
-  fontWeight: 900,
-},
-
-featureList: {
-  display: "grid",
-  gridTemplateColumns: "1fr",
-  gap: "8px",
-  marginTop: "8px",
-  color: "#374151",
-  fontSize: "14px",
-  fontWeight: 800,
-},
+  brandSub: {
+    fontSize: "13px",
+    color: "rgba(255,255,255,0.7)",
+    marginTop: "4px",
+    fontWeight: 600,
+  },
 
   authBlock: {
     display: "flex",
@@ -403,6 +381,50 @@ featureList: {
     borderRadius: "10px",
     border: "none",
     boxSizing: "border-box",
+    color: "#111827",
+    background: "#ffffff",
+    WebkitTextFillColor: "#111827",
+  },
+
+  heroCard: {
+    width: "100%",
+    maxWidth: "460px",
+    background: "white",
+    color: "#111827",
+    padding: "26px",
+    borderRadius: "24px",
+    margin: "0 auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+    boxSizing: "border-box",
+    boxShadow: "0 24px 60px rgba(0,0,0,0.25)",
+  },
+
+  badge: {
+    alignSelf: "flex-start",
+    background: "#dbeafe",
+    color: "#1d4ed8",
+    borderRadius: "999px",
+    padding: "7px 12px",
+    fontSize: "13px",
+    fontWeight: 900,
+  },
+
+  heroTitle: {
+    margin: "4px 0 0",
+    fontSize: "30px",
+    lineHeight: 1.05,
+    fontWeight: 950,
+    letterSpacing: "-1px",
+  },
+
+  heroText: {
+    margin: "0 0 8px",
+    color: "#4b5563",
+    fontSize: "16px",
+    lineHeight: 1.45,
+    fontWeight: 600,
   },
 
   card: {
@@ -425,20 +447,26 @@ featureList: {
     lineHeight: 1.15,
   },
 
+  cardText: {
+    margin: 0,
+    color: "#4b5563",
+    fontWeight: 600,
+  },
+
   input: {
-  width: "100%",
-  minWidth: 0,
-  padding: "13px 14px",
-  borderRadius: "12px",
-  border: "1px solid #d1d5db",
-  boxSizing: "border-box",
-  fontSize: "16px",
-  color: "#111827",
-  background: "#ffffff",
-  caretColor: "#111827",
-  WebkitTextFillColor: "#111827",
-  outline: "none",
-},
+    width: "100%",
+    minWidth: 0,
+    padding: "13px 14px",
+    borderRadius: "12px",
+    border: "1px solid #d1d5db",
+    boxSizing: "border-box",
+    fontSize: "16px",
+    color: "#111827",
+    background: "#ffffff",
+    caretColor: "#111827",
+    WebkitTextFillColor: "#111827",
+    outline: "none",
+  },
 
   primaryButton: {
     flex: "0 0 auto",
@@ -449,6 +477,7 @@ featureList: {
     border: "none",
     cursor: "pointer",
     boxSizing: "border-box",
+    fontWeight: 800,
   },
 
   primaryButtonLarge: {
@@ -460,6 +489,21 @@ featureList: {
     border: "none",
     cursor: "pointer",
     boxSizing: "border-box",
+    fontWeight: 900,
+    fontSize: "16px",
+  },
+
+  createButton: {
+    width: "100%",
+    padding: "12px",
+    borderRadius: "10px",
+    background: "#111827",
+    color: "white",
+    border: "none",
+    cursor: "pointer",
+    boxSizing: "border-box",
+    fontWeight: 900,
+    fontSize: "16px",
   },
 
   secondaryButton: {
@@ -471,5 +515,16 @@ featureList: {
     border: "none",
     cursor: "pointer",
     boxSizing: "border-box",
+    fontWeight: 800,
+  },
+
+  featureRow: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    marginTop: "10px",
+    color: "#4b5563",
+    fontWeight: 700,
+    fontSize: "14px",
   },
 };
