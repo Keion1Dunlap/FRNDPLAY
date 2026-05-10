@@ -1224,6 +1224,16 @@ const addSearchResultToQueue = useCallback(
           const latest = await fetchQueue();
           setQueue(latest);
           queueRef.current = latest;
+          const sorted = [...latest].sort((a, b) => {
+  const voteDiff = (b.votes || 0) - (a.votes || 0);
+
+  if (voteDiff !== 0) return voteDiff;
+
+  return (a.position || 0) - (b.position || 0);
+});
+
+setQueue(sorted);
+queueRef.current = sorted;
         }
       )
       .subscribe();
