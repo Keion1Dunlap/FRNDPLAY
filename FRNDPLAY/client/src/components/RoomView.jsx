@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import YouTube from "react-youtube";
 import { supabase } from "../supabase";
+import { QRCodeCanvas } from "qrcode.react";
 const responsiveCss = `
 * {
   box-sizing: border-box;
@@ -1280,26 +1281,37 @@ return (
   </button>
 
   <button
-    style={styles.shareButton}
-    onClick={async () => {
-      const url = `${window.location.origin}/?room=${roomCode}`;
+  style={styles.shareButton}
+  onClick={async () => {
+    const url = `${window.location.origin}/?room=${roomCode}`;
 
-      if (navigator.share) {
-        try {
-          await navigator.share({
-            title: "Join my FRNDPLAY room",
-            text: `Join my FRNDPLAY room: ${roomCode}`,
-            url,
-          });
-        } catch {}
-      } else {
-        navigator.clipboard.writeText(url);
-        alert("Invite link copied!");
-      }
-    }}
-  >
-    Share Room
-  </button>
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: "Join my FRNDPLAY room",
+          text: `Join my FRNDPLAY room: ${roomCode}`,
+          url,
+        });
+      } catch {}
+    } else {
+      navigator.clipboard.writeText(url);
+      alert("Invite link copied!");
+    }
+  }}
+>
+  Share Room
+</button>
+
+<div style={styles.qrCard}>
+  <QRCodeCanvas
+    value={`${window.location.origin}/?room=${roomCode}`}
+    size={140}
+  />
+
+  <div style={styles.qrText}>
+    Scan to join this room
+  </div>
+</div>
               <button style={styles.leaveButton} onClick={leaveRoom}>
   Leave Room
 </button>
@@ -1854,6 +1866,21 @@ shareButton: {
   color: "white",
   fontWeight: 900,
   cursor: "pointer",
+},
+qrCard: {
+  background: "white",
+  padding: "14px",
+  borderRadius: "18px",
+  display: "flex",
+  alignItems: "center",
+  gap: "14px",
+  width: "fit-content",
+},
+
+qrText: {
+  color: "#111827",
+  fontWeight: 900,
+  fontSize: "0.95rem",
 },
   searchInput: {
   flex: 1,
