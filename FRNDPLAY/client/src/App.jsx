@@ -79,6 +79,26 @@ export default function App() {
       subscription.unsubscribe();
     };
   }, []);
+  useEffect(() => {
+  if (authLoading || !session) return;
+
+  const savedUrl = localStorage.getItem("frndplay_after_login_url");
+  if (!savedUrl) return;
+
+  localStorage.removeItem("frndplay_after_login_url");
+
+  const saved = new URL(savedUrl);
+  const room = saved.searchParams.get("room");
+  const name = saved.searchParams.get("name");
+
+  if (room) {
+    const nextUrl = `/?room=${encodeURIComponent(room)}${
+      name ? `&name=${encodeURIComponent(name)}` : ""
+    }`;
+
+    window.location.replace(nextUrl);
+  }
+}, [authLoading, session]);
 
   const saveDisplayName = (value) => {
     setDisplayName(value);
@@ -99,11 +119,16 @@ export default function App() {
   };
 
   const signInWithGoogle = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: window.location.origin },
-    });
-  };
+  const currentUrl = window.location.href;
+  localStorage.setItem("frndplay_after_login_url", currentUrl);
+
+  await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: window.location.origin,
+    },
+  });
+};
 
   const signOut = async () => {
     await supabase.auth.signOut();
