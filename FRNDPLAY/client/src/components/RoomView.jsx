@@ -1060,6 +1060,9 @@ const addSearchResultToQueue = useCallback(
         .insert([payload]);
 
       if (insertError) throw insertError;
+      setSearchResults([]);
+setSearchQuery("");
+alert("Song added to queue!");
     } catch (err) {
       console.error("addSearchResultToQueue error:", err);
       alert(err.message || "Failed to add video.");
