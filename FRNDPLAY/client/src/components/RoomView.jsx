@@ -1454,7 +1454,15 @@ style={{
 
             </div>
           </div>
-
+<div style={styles.instructionsCard}>
+  <div style={styles.instructionsTitle}>How this room works</div>
+  <div style={styles.instructionsList}>
+    <span>1. Search for a song</span>
+    <span>2. Add it to the queue</span>
+    <span>3. Upvote songs you want next</span>
+    <span>4. Host controls playback</span>
+  </div>
+</div>
 <div className="add-card" style={styles.addCard}>
   <div style={styles.sectionHeading}>Search YouTube</div>
 
@@ -1917,6 +1925,26 @@ qrText: {
   color: "#111827",
   fontWeight: 900,
   fontSize: "0.95rem",
+},
+instructionsCard: {
+  background: "rgba(255,255,255,0.97)",
+  borderRadius: "22px",
+  padding: "18px",
+  boxShadow: "0 18px 40px rgba(0,0,0,0.2)",
+},
+
+instructionsTitle: {
+  color: "#111827",
+  fontSize: "1.15rem",
+  fontWeight: 900,
+  marginBottom: "10px",
+},
+
+instructionsList: {
+  display: "grid",
+  gap: "8px",
+  color: "#4b5563",
+  fontWeight: 700,
 },
   searchInput: {
   flex: 1,
