@@ -1922,10 +1922,11 @@ qrText: {
     fontWeight: 600,
   },
   queueItem: {
-  display: "flex",
-  alignItems: "center",
-  gap: "12px",
   width: "100%",
+  padding: "14px",
+  borderRadius: "18px",
+  background: "#f9fafb",
+  border: "1px solid #e5e7eb",
 },
   queueItemTop: {
     display: "flex",
@@ -1947,7 +1948,7 @@ qrText: {
   wordBreak: "normal",
 },
   queueItemTitle: {
-    fontSize: "1.2rem",
+  fontSize: "1rem",
     fontWeight: 900,
     lineHeight: 1.25,
     marginBottom: "7px",
@@ -1967,12 +1968,13 @@ qrText: {
     marginTop: "8px",
   },
   queueActions: {
-    display: "flex",
-    gap: "10px",
-    flexWrap: "wrap",
-    marginTop: "15px",
-    paddingLeft: "146px",
-  },
+  display: "grid",
+  gridTemplateColumns: "repeat(3, 1fr)",
+  gap: "8px",
+  marginTop: "12px",
+  paddingLeft: 0,
+  width: "100%",
+},
   queueActionButton: {
     border: "none",
     borderRadius: "14px",
