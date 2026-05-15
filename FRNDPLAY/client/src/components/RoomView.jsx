@@ -233,33 +233,31 @@ export default function RoomView({ displayName = "" }) {
   
 const endRoom = async () => {
   try {
-    if (!room?.id) {
-      alert("No room found");
-      return;
-    }
+    if (!isHost || !roomRef.current?.id) return;
 
-    const confirmed = window.confirm(
-      "Are you sure you want to end this room?"
-    );
-
+    const confirmed = window.confirm("Are you sure you want to end this room?");
     if (!confirmed) return;
 
-    const { error } = await supabase
-      .from("rooms")
+    await supabase
+      .from("room_queue")
       .delete()
-      .eq("id", room.id);
+      .eq("room_id", roomRef.current.id);
 
-    if (error) {
-      console.error("Delete room error:", error);
-      alert(error.message);
-      return;
-    }
+    await supabase
+      .from("rooms")
+      .update({
+        current_video_id: "",
+        current_title: "",
+        is_playing: false,
+        playback_time: 0,
+        last_sync_at: new Date().toISOString(),
+      })
+      .eq("id", roomRef.current.id);
 
-    window.location.href = "/";
-
+    window.location.assign("/");
   } catch (err) {
-    console.error(err);
-    alert("Something went wrong ending the room.");
+    console.error("endRoom error:", err);
+    alert("Failed to end room.");
   }
 };
   const [room, setRoom] = useState(null);
@@ -386,7 +384,7 @@ const [searchLoading, setSearchLoading] = useState(false);
     }
   }, []);
 const leaveRoom = () => {
-  window.location.href = "/";
+  window.location.assign("/");
 };
 const toggleSafeMode = async () => {
   if (!isHost || !room?.id) return;
@@ -475,12 +473,14 @@ const toggleSafeMode = async () => {
 
     return data || [];
   }, []);
-  const refreshQueueNow = useCallback(async () => {
+const refreshQueueNow = useCallback(async () => {
   const latest = await fetchQueue();
 
   const sorted = [...latest].sort((a, b) => {
     const voteDiff = (b.votes || 0) - (a.votes || 0);
+
     if (voteDiff !== 0) return voteDiff;
+
     return (a.position || 0) - (b.position || 0);
   });
 
@@ -807,27 +807,29 @@ const next = currentQueue[0];
     },
     [isHost, renumberQueueInDb]
   );
-    const clearQueue = useCallback(async () => {
-    if (!isHost || !roomRef.current?.id) return;
+const clearQueue = useCallback(async () => {
+  if (!isHost || !roomRef.current?.id) return;
 
-    const confirmed = window.confirm("Clear all songs from the queue?");
-    if (!confirmed) return;
+  const confirmed = window.confirm("Clear all songs from the queue?");
+  if (!confirmed) return;
 
-    try {
-      const { error } = await supabase
-        .from("room_queue")
-        .delete()
-        .eq("room_id", roomRef.current.id);
+  try {
+    const { error } = await supabase
+      .from("room_queue")
+      .delete()
+      .eq("room_id", roomRef.current.id);
 
-      if (error) throw error;
+    if (error) throw error;
 
-      setQueue([]);
-      queueRef.current = [];
-    } catch (err) {
-      console.error("clearQueue error:", err);
-      alert("Failed to clear queue.");
-    }
-  }, [isHost]);
+    setQueue([]);
+    queueRef.current = [];
+
+    await refreshQueueNow();
+  } catch (err) {
+    console.error("clearQueue error:", err);
+    alert("Failed to clear queue.");
+  }
+}, [isHost, refreshQueueNow]);
   const moveQueueItem = useCallback(
     async (item, direction) => {
       if (!isHost || !item) return;
