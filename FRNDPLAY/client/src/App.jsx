@@ -167,9 +167,10 @@ export default function App() {
 
       const { error } = await supabase.from("rooms").insert([
         {
-          code,
-          owner_id: session.user.id,
-        },
+  code,
+  owner_id: session.user.id,
+  safe_mode: false,
+}
       ]);
 
       if (error) throw error;

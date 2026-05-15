@@ -392,6 +392,26 @@ const [searchLoading, setSearchLoading] = useState(false);
 const leaveRoom = () => {
   window.location.href = "/";
 };
+const toggleSafeMode = async () => {
+  if (!isHost || !room?.id) return;
+
+  const nextValue = !room.safe_mode;
+
+  const { error } = await supabase
+    .from("rooms")
+    .update({ safe_mode: nextValue })
+    .eq("id", room.id);
+
+  if (error) {
+    console.error("toggleSafeMode error:", error);
+    alert("Failed to update Safe Mode.");
+    return;
+  }
+
+  setRoom((prev) =>
+    prev ? { ...prev, safe_mode: nextValue } : prev
+  );
+};
   const releaseRemoteActionLockSoon = useCallback(() => {
     window.setTimeout(() => {
       remoteActionLockRef.current = false;
@@ -993,12 +1013,13 @@ const searchYouTube = useCallback(async () => {
 
   try {
     const params = new URLSearchParams({
-      part: "snippet",
-      q: searchQuery.trim(),
-      type: "video",
-      maxResults: "8",
-      key: apiKey,
-    });
+  part: "snippet",
+  q: searchQuery.trim(),
+  type: "video",
+  maxResults: "8",
+  safeSearch: room?.safe_mode ? "strict" : "none",
+  key: apiKey,
+});
 
     const res = await fetch(
       `https://www.googleapis.com/youtube/v3/search?${params.toString()}`
@@ -1017,7 +1038,7 @@ const searchYouTube = useCallback(async () => {
   } finally {
     setSearchLoading(false);
   }
-}, [searchQuery]);
+}, [searchQuery, room?.safe_mode]);
 const addSearchResultToQueue = useCallback(
   async (result) => {
     const videoId = result?.id?.videoId;
@@ -1363,7 +1384,19 @@ style={{
             <p style={styles.roleText}>
               Your role: <strong>{isHost ? "HOST" : "GUEST"}</strong>
             </p>
-
+{isHost && (
+  <button
+    style={{
+      ...styles.secondaryButton,
+      marginTop: "10px",
+      background: room?.safe_mode ? "#dcfce7" : "#e5e7eb",
+      color: room?.safe_mode ? "#166534" : "#111827",
+    }}
+    onClick={toggleSafeMode}
+  >
+    Safe Mode: {room?.safe_mode ? "ON" : "OFF"}
+  </button>
+)}
             <p style={styles.subtleText}>
               {isHost
                 ? "You control playback for everyone in the room."
