@@ -255,11 +255,7 @@ const endRoom = async () => {
       return;
     }
 
-    // leave room screen
-    setRoom(null);
-
-    // optional refresh
-    window.location.reload();
+    window.location.href = "/";
 
   } catch (err) {
     console.error(err);
@@ -479,6 +475,20 @@ const toggleSafeMode = async () => {
 
     return data || [];
   }, []);
+  const refreshQueueNow = useCallback(async () => {
+  const latest = await fetchQueue();
+
+  const sorted = [...latest].sort((a, b) => {
+    const voteDiff = (b.votes || 0) - (a.votes || 0);
+    if (voteDiff !== 0) return voteDiff;
+    return (a.position || 0) - (b.position || 0);
+  });
+
+  setQueue(sorted);
+  queueRef.current = sorted;
+
+  return sorted;
+}, [fetchQueue]);
 
   const loadRoom = useCallback(async () => {
     if (!roomCode) return;
@@ -946,6 +956,8 @@ added_by_name: displayName.trim() || authUserEmail || "Guest",        position: 
         .from("room_queue")
         .insert([payload]);
 
+await refreshQueueNow();
+
 setSearchResults([]);
 setSearchQuery("");
 alert("Song added to queue!");
@@ -954,8 +966,13 @@ alert("Song added to queue!");
       console.error("addVideoToQueue error:", err);
       alert(err.message || "Failed to add video.");
     }
-  }, [authUserEmail, authUserId, sessionId, videoInput]);
-
+}, [
+  authUserEmail,
+  authUserId,
+  sessionId,
+  videoInput,
+  refreshQueueNow
+]);
   const handlePlayerReady = useCallback(
     (event) => {
       playerRef.current = event.target;
@@ -1081,7 +1098,10 @@ const addSearchResultToQueue = useCallback(
         .insert([payload]);
 
       if (insertError) throw insertError;
-      setSearchResults([]);
+
+await refreshQueueNow();
+
+setSearchResults([]);
 setSearchQuery("");
 alert("Song added to queue!");
     } catch (err) {
@@ -1089,8 +1109,7 @@ alert("Song added to queue!");
       alert(err.message || "Failed to add video.");
     }
   },
-  [authUserEmail, authUserId, displayName, sessionId]
-);
+[authUserEmail, authUserId, displayName, sessionId, refreshQueueNow]);
   const handlePlayerStateChange = useCallback(
     async (event) => {
       const activeRoom = roomRef.current;
@@ -1206,7 +1225,15 @@ alert("Song added to queue!");
     stopGuestSyncLoop,
     stopHostSyncLoop,
   ]);
+useEffect(() => {
+  if (!room?.id) return;
 
+  const interval = window.setInterval(() => {
+    refreshQueueNow();
+  }, 2000);
+
+  return () => window.clearInterval(interval);
+}, [room?.id, refreshQueueNow]);
   useEffect(() => {
     if (!roomCode || !room?.id) return;
 
@@ -1246,20 +1273,8 @@ alert("Song added to queue!");
           filter: `room_id=eq.${room.id}`,
         },
         async () => {
-          const latest = await fetchQueue();
-          setQueue(latest);
-          queueRef.current = latest;
-          const sorted = [...latest].sort((a, b) => {
-  const voteDiff = (b.votes || 0) - (a.votes || 0);
-
-  if (voteDiff !== 0) return voteDiff;
-
-  return (a.position || 0) - (b.position || 0);
-});
-
-setQueue(sorted);
-queueRef.current = sorted;
-        }
+  await refreshQueueNow();
+}
       )
       .subscribe();
 
@@ -1267,8 +1282,7 @@ queueRef.current = sorted;
       supabase.removeChannel(roomChannel);
       supabase.removeChannel(queueChannel);
     };
-  }, [fetchQueue, room?.id, roomCode]);
-
+}, [refreshQueueNow, room?.id, roomCode]);
   useEffect(() => {
     if (!playerRef.current) return;
 
