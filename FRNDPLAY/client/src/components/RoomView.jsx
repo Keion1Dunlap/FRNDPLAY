@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import YouTube from "react-youtube";
 import { supabase } from "../supabase";
 import { QRCodeCanvas } from "qrcode.react";
+import { usePostHog } from "@posthog/react";
 const responsiveCss = `
 * {
   box-sizing: border-box;
@@ -224,6 +225,7 @@ function normalizeQueuePositions(items) {
 }
 
 export default function RoomView({ displayName = "" }) {
+  const posthog = usePostHog();
   const roomCode = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     return (params.get("room") || "").trim().toUpperCase();
@@ -254,7 +256,9 @@ const endRoom = async () => {
     last_sync_at: new Date().toISOString(),
   })
   .eq("id", roomRef.current.id);
-
+posthog.capture("room_ended", {
+  room_code: roomCode,
+});
     window.location.assign("/");
   } catch (err) {
     console.error("endRoom error:", err);
@@ -406,6 +410,10 @@ const toggleSafeMode = async () => {
   setRoom((prev) =>
     prev ? { ...prev, safe_mode: nextValue } : prev
   );
+  posthog.capture("safe_mode_toggled", {
+  room_code: roomCode,
+  enabled: nextValue,
+});
 };
   const releaseRemoteActionLockSoon = useCallback(() => {
     window.setTimeout(() => {
@@ -533,8 +541,12 @@ const checkRoomEnded = useCallback(async () => {
       }
 
       setRoom(data);
-      roomRef.current = data;
-      setPlayerVideoId(data.current_video_id || "");
+roomRef.current = data;
+setPlayerVideoId(data.current_video_id || "");
+
+posthog.capture("room_joined", {
+  room_code: roomCode,
+});
 
       const queueData = await fetchQueue();
       setQueue(queueData);
@@ -796,6 +808,10 @@ const next = currentQueue[0];
     }
 
     await playQueueItemNow(next);
+    posthog.capture("song_skipped", {
+  room_code: roomCode,
+  title: next.title,
+});
   }, [isHost, playQueueItemNow, updateRoomPlaybackState]);
 
   const removeQueueItem = useCallback(
@@ -845,6 +861,9 @@ const clearQueue = useCallback(async () => {
     queueRef.current = [];
 
     await refreshQueueNow();
+    posthog.capture("queue_cleared", {
+  room_code: roomCode,
+});
   } catch (err) {
     console.error("clearQueue error:", err);
     alert("Failed to clear queue.");
@@ -931,6 +950,11 @@ const clearQueue = useCallback(async () => {
       const latest = await fetchQueue();
 setQueue(latest);
 queueRef.current = latest;
+posthog.capture("song_upvoted", {
+  room_code: roomCode,
+  song_id: item.id,
+  title: item.title,
+});
     } catch (err) {
       console.error("upvoteQueueItem error:", err);
       alert(err.message || "Failed to upvote.");
@@ -982,6 +1006,14 @@ await refreshQueueNow();
 
 setSearchResults([]);
 setSearchQuery("");
+posthog.capture("song_added", {
+  room_code: roomCode,
+  title: videoTitle,
+});
+posthog.capture("song_added", {
+  room_code: roomCode,
+  title,
+});
 alert("Song added to queue!");
       setVideoInput("");
     } catch (err) {
