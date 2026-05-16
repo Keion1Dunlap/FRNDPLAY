@@ -133,25 +133,30 @@ export default function App() {
 };
 
 const signOut = async () => {
-  try {
-    setSigningOut(true);
+  if (signingOut) return;
 
-    localStorage.removeItem("frndplay_after_login_url");
-    localStorage.removeItem("frndplay_session_id");
+  setSigningOut(true);
+
+  try {
+    const savedName = localStorage.getItem("frndplay_display_name");
+
+    localStorage.clear();
+    sessionStorage.clear();
+
+    if (savedName) {
+      localStorage.setItem("frndplay_display_name", savedName);
+    }
 
     setSession(null);
     setRoomCode("");
+    setJoinCode("");
 
-    await supabase.auth.signOut({ scope: "local" });
+    supabase.auth.signOut({ scope: "local" });
 
-    window.location.assign("/");
+window.location.href = "/";
   } catch (err) {
     console.error("signOut error:", err);
-
-    setSession(null);
-    setRoomCode("");
-
-    window.location.assign("/");
+    window.location.replace("/");
   }
 };
 
