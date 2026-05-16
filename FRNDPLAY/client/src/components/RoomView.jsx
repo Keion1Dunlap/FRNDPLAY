@@ -491,6 +491,25 @@ const refreshQueueNow = useCallback(async () => {
   return sorted;
 }, [fetchQueue]);
 
+const checkRoomEnded = useCallback(async () => {
+  if (!roomCode) return;
+
+  const { data, error } = await supabase
+    .from("rooms")
+    .select("ended")
+    .eq("code", roomCode)
+    .maybeSingle();
+
+  if (error) {
+    console.error("checkRoomEnded error:", error);
+    return;
+  }
+
+  if (data?.ended) {
+    window.location.assign("/");
+  }
+}, [roomCode]);
+
   const loadRoom = useCallback(async () => {
     if (!roomCode) return;
 
@@ -1233,10 +1252,11 @@ useEffect(() => {
 
   const interval = window.setInterval(() => {
     refreshQueueNow();
+    checkRoomEnded();
   }, 2000);
 
   return () => window.clearInterval(interval);
-}, [room?.id, refreshQueueNow]);
+}, [room?.id, refreshQueueNow, checkRoomEnded]);
   useEffect(() => {
     if (!roomCode || !room?.id) return;
 
