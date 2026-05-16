@@ -31,6 +31,7 @@ export default function App() {
   const [roomCode, setRoomCode] = useState(initialData.room);
   const [joinCode, setJoinCode] = useState("");
   const [busy, setBusy] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
   const [displayName, setDisplayName] = useState(
     initialData.name || localStorage.getItem("frndplay_display_name") || ""
   );
@@ -131,9 +132,27 @@ export default function App() {
   });
 };
 
-  const signOut = async () => {
-  window.location.href = "/";
-  await supabase.auth.signOut();
+  const [signingOut, setSigningOut] = useState(false);
+
+const signOut = async () => {
+  try {
+    setSigningOut(true);
+
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      console.error("Sign out error:", error);
+      return;
+    }
+
+    localStorage.removeItem("frndplay_after_login_url");
+
+    window.location.replace("/");
+  } catch (err) {
+    console.error("Unexpected sign out error:", err);
+  } finally {
+    setSigningOut(false);
+  }
 };
 
   const handleJoinRoom = () => {
@@ -198,6 +217,7 @@ goToRoom(code);
         <div style={styles.shell}>
           <TopBar
             session={session}
+            signingOut={signingOut}
             displayName={displayName}
             saveDisplayName={saveDisplayName}
             signInWithGoogle={signInWithGoogle}
@@ -234,6 +254,7 @@ goToRoom(code);
       <div style={styles.shell}>
         <TopBar
           session={session}
+          signingOut={signingOut}
           displayName={displayName}
           saveDisplayName={saveDisplayName}
           signInWithGoogle={signInWithGoogle}
@@ -300,6 +321,7 @@ function TopBar({
   saveDisplayName,
   signInWithGoogle,
   signOut,
+  signingOut,
 }) {
   return (
     <header style={styles.topBar}>
@@ -318,9 +340,16 @@ function TopBar({
               style={styles.nameInput}
             />
 
-            <button style={styles.secondaryButton} onClick={signOut}>
-              Sign out
-            </button>
+            <button
+  style={{
+    ...styles.secondaryButton,
+    opacity: signingOut ? 0.7 : 1,
+  }}
+  onClick={signOut}
+  disabled={signingOut}
+>
+  {signingOut ? "Signing out..." : "Sign out"}
+</button>
           </>
         ) : (
           <button style={styles.primaryButton} onClick={signInWithGoogle}>
