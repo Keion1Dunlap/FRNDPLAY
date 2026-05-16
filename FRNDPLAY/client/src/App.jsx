@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { supabase } from "./supabase";
+import { useEffect, useRef, useState } from "react";import { supabase } from "./supabase";
 import { usePostHog } from "@posthog/react";
 import RoomView from "./components/RoomView";
 
@@ -32,6 +31,7 @@ export default function App() {
   const [joinCode, setJoinCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const signingOutRef = useRef(false);
   const [displayName, setDisplayName] = useState(
     initialData.name || localStorage.getItem("frndplay_display_name") || ""
   );
@@ -132,32 +132,30 @@ export default function App() {
   });
 };
 
-const signOut = async () => {
-  if (signingOut) return;
+const signOut = () => {
+  if (signingOutRef.current) return;
 
+  signingOutRef.current = true;
   setSigningOut(true);
 
-  try {
-    const savedName = localStorage.getItem("frndplay_display_name");
+  const savedName = localStorage.getItem("frndplay_display_name");
 
-    localStorage.clear();
-    sessionStorage.clear();
+  localStorage.clear();
+  sessionStorage.clear();
 
-    if (savedName) {
-      localStorage.setItem("frndplay_display_name", savedName);
-    }
-
-    setSession(null);
-    setRoomCode("");
-    setJoinCode("");
-
-    supabase.auth.signOut({ scope: "local" });
-
-window.location.href = "/";
-  } catch (err) {
-    console.error("signOut error:", err);
-    window.location.replace("/");
+  if (savedName) {
+    localStorage.setItem("frndplay_display_name", savedName);
   }
+
+  setSession(null);
+  setRoomCode("");
+  setJoinCode("");
+
+  supabase.auth.signOut({ scope: "local" }).catch((err) => {
+    console.error("signOut error:", err);
+  });
+
+  window.location.assign("/");
 };
 
   const handleJoinRoom = () => {
@@ -346,11 +344,15 @@ function TopBar({
             />
 
             <button
+  type="button"
   style={{
     ...styles.secondaryButton,
     opacity: signingOut ? 0.7 : 1,
   }}
-  onClick={signOut}
+  onPointerDown={(e) => {
+    e.preventDefault();
+    signOut();
+  }}
   disabled={signingOut}
 >
   {signingOut ? "Signing out..." : "Sign out"}
