@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "./supabase";
+import { usePostHog } from "@posthog/react";
 import RoomView from "./components/RoomView";
 
 function makeCode(len = 6) {
@@ -24,7 +25,7 @@ function getRoomDataFromUrl() {
 
 export default function App() {
   const initialData = getRoomDataFromUrl();
-
+  const posthog = usePostHog();
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [roomCode, setRoomCode] = useState(initialData.room);
@@ -176,7 +177,11 @@ export default function App() {
 
       if (error) throw error;
 
-      goToRoom(code);
+posthog.capture("room_created", {
+  room_code: code,
+});
+
+goToRoom(code);
     } catch (err) {
       console.error(err);
       alert(err.message || "Failed to create room.");
