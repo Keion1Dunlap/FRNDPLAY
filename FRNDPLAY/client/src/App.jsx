@@ -170,6 +170,7 @@ export default function App() {
   code,
   owner_id: session.user.id,
   safe_mode: false,
+  ended: false,
 }
       ]);
 

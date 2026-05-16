@@ -244,15 +244,16 @@ const endRoom = async () => {
       .eq("room_id", roomRef.current.id);
 
     await supabase
-      .from("rooms")
-      .update({
-        current_video_id: "",
-        current_title: "",
-        is_playing: false,
-        playback_time: 0,
-        last_sync_at: new Date().toISOString(),
-      })
-      .eq("id", roomRef.current.id);
+  .from("rooms")
+  .update({
+    ended: true,
+    current_video_id: "",
+    current_title: "",
+    is_playing: false,
+    playback_time: 0,
+    last_sync_at: new Date().toISOString(),
+  })
+  .eq("id", roomRef.current.id);
 
     window.location.assign("/");
   } catch (err) {
@@ -1251,10 +1252,15 @@ useEffect(() => {
         },
         (payload) => {
           const nextRoom = payload.new;
-          if (!nextRoom) return;
+if (!nextRoom) return;
 
-          setRoom(nextRoom);
-          roomRef.current = nextRoom;
+if (nextRoom.ended) {
+  window.location.assign("/");
+  return;
+}
+
+setRoom(nextRoom);
+roomRef.current = nextRoom;
 
           const nextVideoId = nextRoom.current_video_id || "";
           if (nextVideoId !== playerVideoIdRef.current) {
