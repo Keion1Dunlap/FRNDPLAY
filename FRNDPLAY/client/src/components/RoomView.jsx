@@ -1439,20 +1439,25 @@ style={{
             </div>
           </div>
 
-<div className="player-card" style={styles.playerCard}>            {playerVideoId ? (
-              <YouTube
-                key={playerVideoId}
-                videoId={playerVideoId}
-                opts={youtubeOpts}
-                onReady={handlePlayerReady}
-                onStateChange={handlePlayerStateChange}
-              />
-            ) : (
-              <div style={styles.emptyPlayer}>
-                Add a video to the queue, then press Play on a queue item.
-              </div>
-            )}
-          </div>
+<div className="player-card" style={styles.playerCard}>
+  {isHost && playerVideoId ? (
+    <YouTube
+      key={playerVideoId}
+      videoId={playerVideoId}
+      opts={youtubeOpts}
+      onReady={handlePlayerReady}
+      onStateChange={handlePlayerStateChange}
+    />
+  ) : isHost ? (
+    <div style={styles.emptyPlayer}>
+      Add a video to the queue, then press Play on a queue item.
+    </div>
+  ) : (
+    <div style={styles.emptyPlayer}>
+      Guest mode: playback is controlled by the host.
+    </div>
+  )}
+</div>
 
 <div className="controls-card" style={styles.controlsCard}>            <div style={styles.controlsRow}>
               <button
