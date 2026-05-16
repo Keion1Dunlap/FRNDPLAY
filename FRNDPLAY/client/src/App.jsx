@@ -132,26 +132,26 @@ export default function App() {
   });
 };
 
-  const [signingOut, setSigningOut] = useState(false);
-
 const signOut = async () => {
   try {
     setSigningOut(true);
 
-    const { error } = await supabase.auth.signOut();
-
-    if (error) {
-      console.error("Sign out error:", error);
-      return;
-    }
-
     localStorage.removeItem("frndplay_after_login_url");
+    localStorage.removeItem("frndplay_session_id");
 
-    window.location.replace("/");
+    setSession(null);
+    setRoomCode("");
+
+    await supabase.auth.signOut({ scope: "local" });
+
+    window.location.assign("/");
   } catch (err) {
-    console.error("Unexpected sign out error:", err);
-  } finally {
-    setSigningOut(false);
+    console.error("signOut error:", err);
+
+    setSession(null);
+    setRoomCode("");
+
+    window.location.assign("/");
   }
 };
 
