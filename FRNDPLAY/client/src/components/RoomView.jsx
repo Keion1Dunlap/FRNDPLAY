@@ -1010,10 +1010,6 @@ posthog.capture("song_added", {
   room_code: roomCode,
   title: videoTitle,
 });
-posthog.capture("song_added", {
-  room_code: roomCode,
-  title,
-});
 alert("Song added to queue!");
       setVideoInput("");
     } catch (err) {
@@ -1157,6 +1153,12 @@ await refreshQueueNow();
 
 setSearchResults([]);
 setSearchQuery("");
+
+posthog.capture("song_added", {
+  room_code: roomCode,
+  title,
+});
+
 alert("Song added to queue!");
     } catch (err) {
       console.error("addSearchResultToQueue error:", err);
