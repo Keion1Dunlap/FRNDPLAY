@@ -1,8 +1,9 @@
 # FRNDPLAY
 
-FRNDPLAY is a real-time collaborative music queue built for shared environments like parties, dorms, kickbacks, road trips, and events.
-
+FRNDPLAY is a real-time collaborative music platform that allows groups to search, queue, vote on, and control music together live across devices.
 Instead of one person controlling the music, FRNDPLAY allows everyone in the room to contribute to the queue, vote on songs, and interact live across devices in real time.
+
+Built with React, Supabase, JavaScript, Vite, and the YouTube Data API.
 
 ---
 
@@ -47,7 +48,6 @@ Instead of one person controlling the music, FRNDPLAY allows everyone in the roo
 
 ### Mobile Queue & Controls
 <img width="250" height="541" alt="image" src="https://github.com/user-attachments/assets/7b9d0e28-b6d2-4a3d-8baa-2b4a52186520" />
-)
 
 ---
 
@@ -129,12 +129,23 @@ Clone the repository:
 ```bash
 git clone https://github.com/Keion1Dunlap/FRNDPLAY.git
 cd FRNDPLAY
+npm install
+npm run dev
+```
+## Environment Variables
+
+```env
 VITE_YOUTUBE_API_KEY=your_key_here
 VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-Author
+```
 
-Keion Dunlap
+## Author
 
-LinkedIn:https://www.linkedin.com/in/keion-dunlap-a01199283/
+### Keion Dunlap
+
+Frontend / Web Application Developer
+
+LinkedIn: https://www.linkedin.com/in/keion-dunlap-a01199283/
 GitHub: https://github.com/Keion1Dunlap
+
