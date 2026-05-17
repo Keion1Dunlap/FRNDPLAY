@@ -129,9 +129,9 @@ Clone the repository:
 ```bash
 git clone https://github.com/Keion1Dunlap/FRNDPLAY.git
 cd FRNDPLAY
-VITE_YOUTUBE_API_KEY= AIzaSyBf3tBRLOVYRutONNrMrS0BvM1ObFLBilQ
-VITE_SUPABASE_URL= https://inwzrpdaepmhxhwcvkfi.supabase.co/rest/v1/
-VITE_SUPABASE_ANON_KEY= eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlud3pycGRhZXBtaHhod2N2a2ZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY1MTQ5MzYsImV4cCI6MjA4MjA5MDkzNn0.uLCU3K1CDKQS5Xs1p2ZnNaGSYNMAoTnQS-aWmRSx3yA
+VITE_YOUTUBE_API_KEY=your_key_here
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 Author
 
 Keion Dunlap
