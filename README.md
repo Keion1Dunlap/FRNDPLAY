@@ -1,82 +1,140 @@
-FRNDPLAY
+# FRNDPLAY
 
 FRNDPLAY is a real-time collaborative music queue built for shared environments like parties, dorms, kickbacks, road trips, and events.
 
-Instead of one person controlling the music, everyone in the room can contribute to the queue, vote on songs, and interact live across devices.
+Instead of one person controlling the music, FRNDPLAY allows everyone in the room to contribute to the queue, vote on songs, and interact live across devices in real time.
 
-Live Demo
+---
 
-🌐 Live App: FRNDPLAY
+## Live Demo
 
-Features
-Real-time shared music queue
-Create and join rooms instantly
-Live song voting system
-Queue reordering and host controls
-YouTube search integration
-Mobile-responsive interface
-Cross-device synchronization
-Seamless live updates without refreshing
-Tech Stack
-Frontend
-React
-JavaScript
-Vite
-Backend / Services
-Supabase
-YouTube Data API
-Deployment
-Netlify
-What I Built
+🌐 https://frndplay.com
 
-FRNDPLAY was built to solve a simple problem:
-music control in social environments usually depends on a single device and doesn’t scale well socially.
+---
 
-The goal was to create a lightweight platform where music becomes a shared, interactive experience instead of a one-person-controlled queue.
+## Features
 
-During development, I worked through:
+- Real-time shared music queue
+- Create and join rooms instantly
+- Live song voting system
+- Queue reordering and host controls
+- YouTube search integration
+- Cross-device synchronization
+- Mobile-responsive UI
+- Seamless live updates without page refreshes
+- Safe mode filtering toggle
+- Broadcast playback sync controls
 
-real-time state synchronization
-responsive mobile layouts
-live queue updates
-API integrations
-deployment workflows
-production debugging
-user experience optimization
-Current Status
+---
 
-The MVP is live and functional, with active work continuing on:
+## Screenshots
 
-improved room moderation
-better recommendation systems
-enhanced queue intelligence
-expanded social features
-Screenshots
+### Landing Page
+<img width="959" height="510" alt="image" src="https://github.com/user-attachments/assets/6cd66ddb-d435-4e88-8f12-67d3d8a60e81" />
 
-(Add screenshots here)
 
-Future Goals
-Spotify integration
-User accounts & profiles
-Playlist persistence
-Smarter recommendation engine
-Event/community features
-Native mobile app
-Installation
-git clone https://github.com/YOUR_USERNAME/frndplay.git
-cd frndplay
-npm install
-npm run dev
-Environment Variables
+### Live Room / Now Playing
+<img width="960" height="540" alt="image" src="https://github.com/user-attachments/assets/b1726667-92c5-4605-97da-3f683007b248" />
 
-Create a .env file and add:
 
-VITE_YOUTUBE_API_KEY=your_key_here
-VITE_SUPABASE_URL=your_url_here
-VITE_SUPABASE_ANON_KEY=your_key_here
+### Queue Interaction
+<img width="959" height="511" alt="image" src="https://github.com/user-attachments/assets/61f49740-5bbc-4756-bfb5-df8e6ae0cbf2" />
+
+
+### Mobile Experience
+<img width="250" height="512" alt="image" src="https://github.com/user-attachments/assets/a91966dc-9e41-44c6-ae9c-e967dc41f94c" />
+
+
+### Mobile Queue & Controls
+<img width="250" height="541" alt="image" src="https://github.com/user-attachments/assets/7b9d0e28-b6d2-4a3d-8baa-2b4a52186520" />
+)
+
+---
+
+## Tech Stack
+
+### Frontend
+- React
+- JavaScript
+- Vite
+
+### Backend / Services
+- Supabase
+- YouTube Data API
+- PostHog Analytics
+
+### Deployment
+- Vercel
+
+---
+
+## Project Overview
+
+FRNDPLAY was built to solve a simple but common problem:
+music control in social environments usually depends on one device and one person.
+
+The goal of the project was to create a lightweight platform where music becomes a shared, interactive experience instead of a one-person-controlled queue.
+
+While building FRNDPLAY, I worked through:
+- real-time state synchronization
+- responsive mobile design
+- API integrations
+- deployment workflows
+- production debugging
+- live queue updates
+- user experience optimization
+- authentication and room management
+- cross-device interaction handling
+
+This project has been developed as a live production application with ongoing iteration and feature expansion.
+
+---
+
+## Current Status
+
+The MVP is currently live and functional.
+
+Current development focus includes:
+- smarter recommendation systems
+- improved moderation controls
+- playlist persistence
+- enhanced social features
+- expanded queue intelligence
+
+---
+
+## Technical Challenges Solved
+
+### Real-Time Synchronization
+Implemented live queue updates across multiple users and devices without requiring page refreshes.
+
+### Mobile Responsiveness
+Optimized layouts and interactions across desktop and mobile devices to ensure a smooth user experience.
+
+### Authentication & Room Flow
+Built room creation/join functionality with persistent synchronization between users.
+
+### API Integration
+Integrated the YouTube Data API to allow dynamic song search and queue management directly inside the application.
+
+### Deployment & Production Debugging
+Managed deployment workflows and continuously debugged production issues related to authentication, playback syncing, and responsive layouts.
+
+---
+
+## Installation
+
+Clone the repository:
+
+```bash
+git clone https://github.com/Keion1Dunlap/FRNDPLAY.git
+cd FRNDPLAY
+VITE_YOUTUBE_API_KEY= AIzaSyBf3tBRLOVYRutONNrMrS0BvM1ObFLBilQ
+VITE_SUPABASE_URL= https://inwzrpdaepmhxhwcvkfi.supabase.co/rest/v1/
+VITE_SUPABASE_ANON_KEY= eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlud3pycGRhZXBtaHhod2N2a2ZpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY1MTQ5MzYsImV4cCI6MjA4MjA5MDkzNn0.uLCU3K1CDKQS5Xs1p2ZnNaGSYNMAoTnQS-aWmRSx3yA
 Author
 
 Keion Dunlap
 
-LinkedIn: (your LinkedIn)
-GitHub: (your GitHub)
+LinkedIn:https://www.linkedin.com/in/keion-dunlap-a01199283/
+GitHub: https://github.com/Keion1Dunlap
