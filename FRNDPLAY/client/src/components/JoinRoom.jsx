@@ -4,6 +4,7 @@ import { supabase } from "../supabase";
 
 export default function JoinRoom({ user, setRoom }) {
   const [code, setCode] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -12,13 +13,14 @@ export default function JoinRoom({ user, setRoom }) {
     setLoading(true);
 
     try {
-      if (!user?.id) {
-  return setErrorMsg("Sign in to join this room.");
-}
+      if (!user?.id) return setErrorMsg("Sign in to join this room.");
+
       const trimmed = String(code || "").trim().toUpperCase();
+      const name = String(displayName || "").trim();
+
+      if (!name) throw new Error("Enter your name.");
       if (!trimmed) throw new Error("Enter a room code.");
 
-      // 1) Find the room by code
       const { data: room, error: roomErr } = await supabase
         .from("rooms")
         .select("*")
@@ -28,7 +30,6 @@ export default function JoinRoom({ user, setRoom }) {
       if (roomErr) throw roomErr;
       if (!room?.id) throw new Error("Room not found.");
 
-      // 2) Join idempotently: UPSERT membership (prevents duplicate key errors)
       const { error: memberErr } = await supabase
         .from("room_members")
         .upsert(
@@ -36,17 +37,15 @@ export default function JoinRoom({ user, setRoom }) {
           { onConflict: "room_id,user_id" }
         );
 
-      // With upsert it *shouldn't* happen, but if it does, treat as "already joined".
       if (memberErr && memberErr.code !== "23505") throw memberErr;
 
-      // ✅ 3) Set the URL automatically
       const url = new URL(window.location.href);
       url.searchParams.set("room", trimmed);
+      url.searchParams.set("name", name);
       url.searchParams.delete("session_id");
       url.searchParams.delete("checkout");
       window.history.replaceState({}, "", url.toString());
 
-      // 4) Enter the room UI
       setRoom(room);
     } catch (e) {
       setErrorMsg(String(e?.message ?? e));
@@ -57,31 +56,32 @@ export default function JoinRoom({ user, setRoom }) {
 
   return (
     <div style={styles.card}>
-      <h2 style={{ marginTop: 0 }}>Join a room</h2>
+      <h2 style={styles.title}>Join a room</h2>
+      <p style={styles.subtitle}>Enter your name and the room code to join the queue.</p>
 
-      <div
-        style={{
-          display: "flex",
-          gap: 10,
-          flexWrap: "wrap",
-          alignItems: "center",
-        }}
-      >
+      <div style={styles.form}>
         <input
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          placeholder="Enter room code"
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+          placeholder="Your name"
           style={styles.input}
           disabled={loading}
         />
+
+        <input
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder="Room code"
+          style={styles.input}
+          disabled={loading}
+        />
+
         <button onClick={joinRoom} disabled={loading} style={styles.primaryBtn}>
           {loading ? "Joining..." : "Join Room"}
         </button>
       </div>
 
-      <div style={{ marginTop: 10, opacity: 0.75, fontSize: 14 }}>
-        Tip: codes are usually 6 characters (ex: LKDCV9)
-      </div>
+      <div style={styles.tip}>Tip: codes are usually 6 characters, like LKDCV9.</div>
 
       {errorMsg ? <div style={styles.error}>{errorMsg}</div> : null}
     </div>
@@ -92,27 +92,55 @@ const styles = {
   card: {
     background: "white",
     border: "1px solid #e9e9e9",
-    borderRadius: 14,
-    padding: 18,
+    borderRadius: 18,
+    padding: 20,
     marginBottom: 16,
     boxShadow: "0 2px 10px rgba(0,0,0,0.04)",
   },
+  title: {
+    margin: 0,
+    fontSize: 28,
+    fontWeight: 900,
+    color: "#111827",
+  },
+  subtitle: {
+    margin: "8px 0 16px",
+    color: "#6b7280",
+    fontWeight: 600,
+  },
+  form: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) 160px",
+    gap: 10,
+    alignItems: "center",
+  },
   input: {
-    flex: 1,
-    minWidth: 240,
-    padding: "12px 12px",
+    width: "100%",
+    minWidth: 0,
+    padding: "13px 14px",
     borderRadius: 12,
     border: "1px solid #ddd",
-    fontSize: 14,
+    fontSize: 16,
+    color: "#111827",
+    background: "#ffffff",
+    caretColor: "#111827",
+    WebkitTextFillColor: "#111827",
+    outline: "none",
   },
   primaryBtn: {
-    padding: "10px 14px",
+    padding: "13px 14px",
     borderRadius: 12,
-    border: "1px solid #111",
-    background: "#111",
+    border: "1px solid #111827",
+    background: "#111827",
     color: "white",
     cursor: "pointer",
-    fontWeight: 800,
+    fontWeight: 900,
+    fontSize: 16,
+  },
+  tip: {
+    marginTop: 10,
+    opacity: 0.75,
+    fontSize: 14,
   },
   error: {
     marginTop: 12,
