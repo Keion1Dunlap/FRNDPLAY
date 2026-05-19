@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import YouTube from "react-youtube";
 import { supabase } from "../supabase";
 import { QRCodeCanvas } from "qrcode.react";
 import { usePostHog } from "@posthog/react";
+import YouTube from "react-youtube";
 const responsiveCss = `
 * {
   box-sizing: border-box;
@@ -267,18 +267,27 @@ posthog.capture("room_ended", {
 };
   const [room, setRoom] = useState(null);
   const [queue, setQueue] = useState([]);
+  const [messages, setMessages] = useState([]);
+const [chatInput, setChatInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [videoInput, setVideoInput] = useState("");
   const [queueBusyId, setQueueBusyId] = useState(null);
+  const [songMemory, setSongMemory] = useState([]);
+  const [currentQueueIndex, setCurrentQueueIndex] = useState(-1);
+const [songMemoryIndex, setSongMemoryIndex] = useState(-1);
   const [playerReady, setPlayerReady] = useState(false);
   const [playerVideoId, setPlayerVideoId] = useState("");
+  const [playerReloadKey, setPlayerReloadKey] = useState(0);
   const [authUserId, setAuthUserId] = useState(null);
   const [authUserEmail, setAuthUserEmail] = useState("");
   const [userVotes, setUserVotes] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
 const [searchResults, setSearchResults] = useState([]);
 const [searchLoading, setSearchLoading] = useState(false);
+
+// ADD THIS
+const [memberCount, setMemberCount] = useState(1);
   const playerRef = useRef(null);
   const hostSyncIntervalRef = useRef(null);
   const guestSyncIntervalRef = useRef(null);
@@ -288,7 +297,10 @@ const [searchLoading, setSearchLoading] = useState(false);
   const queueRef = useRef([]);
   const playerVideoIdRef = useRef("");
   const playerReadyRef = useRef(false);
-
+  const suppressPauseUntilRef = useRef(0);
+const songMemoryRef = useRef([]);
+const songMemoryIndexRef = useRef(-1);
+const currentQueueIndexRef = useRef(-1);
   const isHost = useMemo(() => {
     if (!room) return false;
 
@@ -333,7 +345,15 @@ const [searchLoading, setSearchLoading] = useState(false);
   useEffect(() => {
     playerReadyRef.current = playerReady;
   }, [playerReady]);
-
+useEffect(() => {
+  songMemoryRef.current = songMemory;
+}, [songMemory]);
+useEffect(() => {
+  currentQueueIndexRef.current = currentQueueIndex;
+}, [currentQueueIndex]);
+useEffect(() => {
+  songMemoryIndexRef.current = songMemoryIndex;
+}, [songMemoryIndex]);
   useEffect(() => {
     let mounted = true;
 
@@ -620,69 +640,61 @@ posthog.capture("room_joined", {
   ]);
 
   const startHostSyncLoop = useCallback(() => {
-    if (hostSyncIntervalRef.current) {
-      clearInterval(hostSyncIntervalRef.current);
-      hostSyncIntervalRef.current = null;
+  if (hostSyncIntervalRef.current) {
+    clearInterval(hostSyncIntervalRef.current);
+    hostSyncIntervalRef.current = null;
+  }
+
+  if (!isHost) return;
+
+  hostSyncIntervalRef.current = window.setInterval(() => {
+    pushHostState();
+  }, SYNC_PUSH_INTERVAL_MS);
+}, [isHost, pushHostState]);
+
+const stopHostSyncLoop = useCallback(() => {
+  if (hostSyncIntervalRef.current) {
+    clearInterval(hostSyncIntervalRef.current);
+    hostSyncIntervalRef.current = null;
+  }
+}, []);
+
+const reconcileGuestToHost = useCallback(() => {
+  const activeRoom = roomRef.current;
+  if (isHost || !playerRef.current || !activeRoom?.current_video_id) return;
+
+  const projectedTime = projectHostPlaybackTime(activeRoom);
+  const localTime = getPlayerTime();
+  const drift = Math.abs(projectedTime - localTime);
+
+  const localState = getPlayerState();
+  const localIsPlaying = localState === 1;
+  const hostIsPlaying = !!activeRoom.is_playing;
+  const roomVideoId = activeRoom.current_video_id || "";
+
+  if (roomVideoId && roomVideoId !== playerVideoIdRef.current) {
+    setPlayerVideoId(roomVideoId);
+    return;
+  }
+
+  if (hostIsPlaying !== localIsPlaying) {
+    remoteActionLockRef.current = true;
+
+    if (hostIsPlaying) {
+      playerRef.current.playVideo?.();
+    } else {
+      playerRef.current.pauseVideo?.();
     }
 
-    if (!isHost) return;
+    releaseRemoteActionLockSoon();
+  }
 
-    hostSyncIntervalRef.current = window.setInterval(() => {
-      pushHostState();
-    }, SYNC_PUSH_INTERVAL_MS);
-  }, [isHost, pushHostState]);
-
-  const stopHostSyncLoop = useCallback(() => {
-    if (hostSyncIntervalRef.current) {
-      clearInterval(hostSyncIntervalRef.current);
-      hostSyncIntervalRef.current = null;
-    }
-  }, []);
-
-  const reconcileGuestToHost = useCallback(() => {
-    const activeRoom = roomRef.current;
-    if (isHost || !playerRef.current || !activeRoom?.current_video_id) return;
-
-    const projectedTime = projectHostPlaybackTime(activeRoom);
-    const localTime = getPlayerTime();
-    const drift = Math.abs(projectedTime - localTime);
-
-    const localState = getPlayerState();
-    const localIsPlaying = localState === 1;
-    const hostIsPlaying = !!activeRoom.is_playing;
-    const roomVideoId = activeRoom.current_video_id || "";
-
-    if (roomVideoId && roomVideoId !== playerVideoIdRef.current) {
-      setPlayerVideoId(roomVideoId);
-      return;
-    }
-
-    if (hostIsPlaying !== localIsPlaying) {
-      remoteActionLockRef.current = true;
-
-      if (hostIsPlaying) {
-        playerRef.current.playVideo?.();
-      } else {
-        playerRef.current.pauseVideo?.();
-      }
-
-      releaseRemoteActionLockSoon();
-    }
-
-    if (drift > SEEK_THRESHOLD_SECONDS) {
-      remoteActionLockRef.current = true;
-      playerRef.current.seekTo?.(projectedTime, true);
-      releaseRemoteActionLockSoon();
-      return;
-    }
-
-    if (!hostIsPlaying && drift > PAUSED_SEEK_THRESHOLD_SECONDS) {
-      remoteActionLockRef.current = true;
-      playerRef.current.seekTo?.(projectedTime, true);
-      releaseRemoteActionLockSoon();
-    }
-  }, [getPlayerState, getPlayerTime, isHost, releaseRemoteActionLockSoon]);
-
+  if (drift > SEEK_THRESHOLD_SECONDS) {
+    remoteActionLockRef.current = true;
+    playerRef.current.seekTo?.(projectedTime, true);
+    releaseRemoteActionLockSoon();
+  }
+}, [getPlayerState, getPlayerTime, isHost, releaseRemoteActionLockSoon]);
   const startGuestSyncLoop = useCallback(() => {
     if (guestSyncIntervalRef.current) {
       clearInterval(guestSyncIntervalRef.current);
@@ -728,91 +740,128 @@ posthog.capture("room_joined", {
 
     return normalized;
   }, []);
+const rememberSong = useCallback((song) => {
+  if (!song?.video_id) return -1;
 
-  const playQueueItemNow = useCallback(
-    async (item) => {
-      if (!isHost || !item || advancingRef.current) return;
+  const cleanSong = {
+    video_id: song.video_id,
+    title: song.title || "Untitled",
+  };
 
-      advancingRef.current = true;
-      setQueueBusyId(item.id);
-
-      try {
-        setPlayerVideoId(item.video_id);
-
-        const optimisticRoomPatch = {
-          current_video_id: item.video_id,
-          current_title: item.title || "Untitled",
-          is_playing: true,
-          playback_time: 0,
-          last_sync_at: new Date().toISOString(),
-          host_session_id: sessionId,
-          ...(authUserId ? { host_user_id: authUserId } : {}),
-        };
-
-        setRoom((prev) => (prev ? { ...prev, ...optimisticRoomPatch } : prev));
-        roomRef.current = roomRef.current
-          ? { ...roomRef.current, ...optimisticRoomPatch }
-          : roomRef.current;
-
-        await updateRoomPlaybackState(optimisticRoomPatch);
-
-        const { error: deleteError } = await supabase
-          .from("room_queue")
-          .delete()
-          .eq("id", item.id);
-
-        if (deleteError) throw deleteError;
-
-        const remaining = queueRef.current.filter((q) => q.id !== item.id);
-        const normalized = await renumberQueueInDb(remaining);
-
-        setQueue(normalized);
-        queueRef.current = normalized;
-      } catch (err) {
-        console.error("playQueueItemNow error:", err);
-        alert(err.message || "Failed to play queue item.");
-      } finally {
-        setQueueBusyId(null);
-        advancingRef.current = false;
-      }
-    },
-    [authUserId, isHost, renumberQueueInDb, sessionId, updateRoomPlaybackState]
+  const existingIndex = songMemoryRef.current.findIndex(
+    (s) => s.video_id === cleanSong.video_id
   );
 
-  const advanceToNextTrack = useCallback(async () => {
-    if (!isHost || advancingRef.current) return;
+  if (existingIndex !== -1) {
+    songMemoryIndexRef.current = existingIndex;
+    setSongMemoryIndex(existingIndex);
+    return existingIndex;
+  }
 
-    const currentQueue = [...(queueRef.current || [])];
+  const nextMemory = [...songMemoryRef.current, cleanSong];
+  const nextIndex = nextMemory.length - 1;
 
-currentQueue.sort((a, b) => {
-  const voteDiff = (b.votes || 0) - (a.votes || 0);
+  songMemoryRef.current = nextMemory;
+  songMemoryIndexRef.current = nextIndex;
 
-  if (voteDiff !== 0) return voteDiff;
+  setSongMemory(nextMemory);
+  setSongMemoryIndex(nextIndex);
 
-  return (a.position || 0) - (b.position || 0);
-});
+  return nextIndex;
+}, []);
 
-const next = currentQueue[0];
+const playQueueItemNow = useCallback(
+  async (item) => {
+    if (!isHost || !item || advancingRef.current) return;
 
-    if (!next) {
-      try {
-        await updateRoomPlaybackState({
-          is_playing: false,
-          playback_time: 0,
-          last_sync_at: new Date().toISOString(),
-        });
-      } catch (err) {
-        console.error("advanceToNextTrack error:", err);
+    advancingRef.current = true;
+    setQueueBusyId(item.id);
+    suppressPauseUntilRef.current = Date.now() + 3000;
+
+    try {
+      const currentRoom = roomRef.current;
+      const queueIndex = queueRef.current.findIndex(
+        (q) => q.video_id === item.video_id
+      );
+
+      if (queueIndex !== -1) {
+        currentQueueIndexRef.current = queueIndex;
+        setCurrentQueueIndex(queueIndex);
       }
-      return;
-    }
+      if (currentRoom?.current_video_id) {
+        rememberSong({
+          video_id: currentRoom.current_video_id,
+          title: currentRoom.current_title,
+        });
+      }
 
-    await playQueueItemNow(next);
-    posthog.capture("song_skipped", {
-  room_code: roomCode,
-  title: next.title,
-});
-  }, [isHost, playQueueItemNow, updateRoomPlaybackState]);
+      rememberSong({
+        video_id: item.video_id,
+        title: item.title || "Untitled",
+      });
+
+      setPlayerVideoId(item.video_id);
+      playerVideoIdRef.current = item.video_id;
+
+      await updateRoomPlaybackState({
+        current_video_id: item.video_id,
+        current_title: item.title || "Untitled",
+        is_playing: false,
+        playback_time: 0,
+        last_sync_at: new Date().toISOString(),
+        host_session_id: sessionId,
+        ...(authUserId ? { host_user_id: authUserId } : {}),
+      });
+
+    } catch (err) {
+      console.error("playQueueItemNow error:", err);
+      alert(err.message || "Failed to play queue item.");
+    } finally {
+      setQueueBusyId(null);
+      advancingRef.current = false;
+    }
+  },
+  [
+    authUserId,
+    isHost,
+    refreshQueueNow,
+    rememberSong,
+    sessionId,
+    updateRoomPlaybackState,
+  ]
+);
+
+const advanceToNextTrack = useCallback(async () => {
+  if (!isHost || advancingRef.current) return;
+
+  const currentQueue = [...(queueRef.current || [])].sort((a, b) => {
+    return (a.position || 0) - (b.position || 0);
+  });
+
+  if (currentQueue.length === 0) {
+    alert("No songs in the queue.");
+    return;
+  }
+
+  const currentVideoId =
+    roomRef.current?.current_video_id || playerVideoIdRef.current || "";
+
+  const currentIndex = currentQueue.findIndex(
+    (item) => item.video_id === currentVideoId
+  );
+
+  const nextIndex = currentIndex === -1 ? 0 : currentIndex + 1;
+
+  if (nextIndex >= currentQueue.length) {
+    alert("You are at the last song.");
+    return;
+  }
+
+  currentQueueIndexRef.current = nextIndex;
+  setCurrentQueueIndex(nextIndex);
+
+  await playQueueItemNow(currentQueue[nextIndex]);
+}, [isHost, playQueueItemNow]);
 
   const removeQueueItem = useCallback(
     async (itemId) => {
@@ -963,106 +1012,112 @@ posthog.capture("song_upvoted", {
 [authUserId, fetchQueue]);
 
   const addVideoToQueue = useCallback(async () => {
-    const videoId = extractYouTubeId(videoInput);
+  const videoId = extractYouTubeId(videoInput);
 
-    if (!videoId) {
-      alert("Paste a valid YouTube URL or video ID.");
-      return;
-    }
+  if (!videoId) {
+    alert("Paste a valid YouTube URL or video ID.");
+    return;
+  }
 
-    if (!roomRef.current?.id) {
-      alert("Room is not ready yet.");
-      return;
-    }
+  if (!roomRef.current?.id) {
+    alert("Room is not ready yet.");
+    return;
+  }
 
-    try {
-      const { data: existing, error: fetchError } = await supabase
-        .from("room_queue")
-        .select("position")
-        .eq("room_id", roomRef.current.id)
-        .order("position", { ascending: false })
-        .limit(1);
+  try {
+    const { data: existing, error: fetchError } = await supabase
+      .from("room_queue")
+      .select("position")
+      .eq("room_id", roomRef.current.id)
+      .order("position", { ascending: false })
+      .limit(1);
 
-      if (fetchError) throw fetchError;
+    if (fetchError) throw fetchError;
 
-      const highestPosition = existing?.[0]?.position || 0;
-      const nextPosition = highestPosition + 1;
-      const videoTitle = await getYouTubeTitle(videoId);
+    const highestPosition = existing?.[0]?.position || 0;
+    const videoTitle = await getYouTubeTitle(videoId);
 
-      const payload = {
-        room_id: roomRef.current.id,
-        video_id: videoId,
-        title: videoTitle,
-        added_by: authUserId || sessionId,
-added_by_name: displayName.trim() || authUserEmail || "Guest",        position: nextPosition,
-        votes: 0,
-      };
+    const payload = {
+      room_id: roomRef.current.id,
+      video_id: videoId,
+      title: videoTitle,
+      added_by: authUserId || sessionId,
+      added_by_name: displayName.trim() || authUserEmail || "Guest",
+      position: highestPosition + 1,
+      votes: 0,
+    };
 
-      const { error: insertError } = await supabase
-        .from("room_queue")
-        .insert([payload]);
+    const { error: insertError } = await supabase
+      .from("room_queue")
+      .insert([payload]);
 
-await refreshQueueNow();
+    if (insertError) throw insertError;
 
-setSearchResults([]);
-setSearchQuery("");
-posthog.capture("song_added", {
-  room_code: roomCode,
-  title: videoTitle,
-});
-alert("Song added to queue!");
-      setVideoInput("");
-    } catch (err) {
-      console.error("addVideoToQueue error:", err);
-      alert(err.message || "Failed to add video.");
-    }
+    await refreshQueueNow();
+    setSearchResults([]);
+    setSearchQuery("");
+    setVideoInput("");
+
+    posthog.capture("song_added", {
+      room_code: roomCode,
+      title: videoTitle,
+    });
+
+    alert("Song added to queue!");
+  } catch (err) {
+    console.error("addVideoToQueue error:", err);
+    alert(err.message || "Failed to add video.");
+  }
 }, [
   authUserEmail,
   authUserId,
+  displayName,
   sessionId,
   videoInput,
-  refreshQueueNow
+  refreshQueueNow,
+  posthog,
+  roomCode,
 ]);
-  const handlePlayerReady = useCallback(
-    (event) => {
-      playerRef.current = event.target;
-      setPlayerReady(true);
+const handlePlayerReady = useCallback(
+  (event) => {
+    playerRef.current = event.target;
+    setPlayerReady(true);
 
-      if (isHost) event.target.unMute?.();
-      else event.target.mute?.();
+    const activeRoom = roomRef.current;
+    if (!activeRoom) return;
 
-      const activeRoom = roomRef.current;
-      if (!activeRoom) return;
+    const roomVideoId = activeRoom.current_video_id || "";
 
-      const roomVideoId = activeRoom.current_video_id || "";
-      if (roomVideoId && roomVideoId !== playerVideoIdRef.current) {
-        setPlayerVideoId(roomVideoId);
-      }
+    if (roomVideoId && roomVideoId !== playerVideoIdRef.current) {
+      setPlayerVideoId(roomVideoId);
+      playerVideoIdRef.current = roomVideoId;
+    }
 
-      window.setTimeout(() => {
-        const latestRoom = roomRef.current;
-        if (!latestRoom || !playerRef.current) return;
+    window.setTimeout(() => {
+      const latestRoom = roomRef.current;
+      if (!latestRoom || !playerRef.current) return;
 
-        if (isHost) playerRef.current.unMute?.();
-        else playerRef.current.mute?.();
+      const targetTime = isHost
+        ? safeNum(latestRoom.playback_time, 0)
+        : projectHostPlaybackTime(latestRoom);
+
+      playerRef.current.seekTo?.(targetTime, true);
+
+      if (latestRoom.is_playing) {
+        suppressPauseUntilRef.current = Date.now() + 3000;
+        playerRef.current.playVideo?.();
 
         if (isHost) {
-          const roomTime = safeNum(latestRoom.playback_time, 0);
-          playerRef.current.seekTo?.(roomTime, true);
-
-          if (latestRoom.is_playing) playerRef.current.playVideo?.();
-          else playerRef.current.pauseVideo?.();
-        } else {
-          const projected = projectHostPlaybackTime(latestRoom);
-          playerRef.current.seekTo?.(projected, true);
-
-          if (latestRoom.is_playing) playerRef.current.playVideo?.();
-          else playerRef.current.pauseVideo?.();
+          window.setTimeout(() => {
+          }, 600);
         }
-      }, 250);
-    },
-    [isHost]
-  );
+      } else {
+        playerRef.current.pauseVideo?.();
+      }
+    }, 500);
+  },
+  [isHost]
+);
 const searchYouTube = useCallback(async () => {
   if (!searchQuery.trim()) {
     alert("Search for a song or video.");
@@ -1079,11 +1134,12 @@ const searchYouTube = useCallback(async () => {
   setSearchLoading(true);
 
   try {
-    const params = new URLSearchParams({
+   const params = new URLSearchParams({
   part: "snippet",
   q: searchQuery.trim(),
   type: "video",
   maxResults: "8",
+  videoEmbeddable: "true",
   safeSearch: room?.safe_mode ? "strict" : "none",
   key: apiKey,
 });
@@ -1149,23 +1205,44 @@ const addSearchResultToQueue = useCallback(
 
       if (insertError) throw insertError;
 
-await refreshQueueNow();
+      await refreshQueueNow();
+      setSearchResults([]);
+      setSearchQuery("");
 
-setSearchResults([]);
-setSearchQuery("");
+      posthog.capture("song_added", {
+        room_code: roomCode,
+        title,
+      });
 
-posthog.capture("song_added", {
-  room_code: roomCode,
-  title,
-});
-
-alert("Song added to queue!");
+      alert("Song added to queue!");
     } catch (err) {
       console.error("addSearchResultToQueue error:", err);
       alert(err.message || "Failed to add video.");
     }
   },
-[authUserEmail, authUserId, displayName, sessionId, refreshQueueNow]);
+  [
+    authUserEmail,
+    authUserId,
+    displayName,
+    sessionId,
+    refreshQueueNow,
+    posthog,
+    roomCode,
+  ]
+);
+const handlePlayerError = useCallback((event) => {
+  console.error("YouTube player error:", event.data);
+
+  
+
+  updateRoomPlaybackState({
+    is_playing: false,
+    playback_time: 0,
+    last_sync_at: new Date().toISOString(),
+  }).catch((err) => {
+    console.error("handlePlayerError update error:", err);
+  });
+}, [updateRoomPlaybackState]);
   const handlePlayerStateChange = useCallback(
     async (event) => {
       const activeRoom = roomRef.current;
@@ -1195,45 +1272,102 @@ alert("Song added to queue!");
             ...(authUserId ? { host_user_id: authUserId } : {}),
           });
         } else if (ytState === 2) {
-          await updateRoomPlaybackState({
-            is_playing: false,
-            playback_time: getPlayerTime(),
-            last_sync_at: new Date().toISOString(),
-            host_session_id: sessionId,
-            ...(authUserId ? { host_user_id: authUserId } : {}),
-          });
+  if (Date.now() < suppressPauseUntilRef.current) return;
+
+  await updateRoomPlaybackState({
+    is_playing: false,
+    playback_time: getPlayerTime(),
+    last_sync_at: new Date().toISOString(),
+    host_session_id: sessionId,
+    ...(authUserId ? { host_user_id: authUserId } : {}),
+  });
         } else if (ytState === 0) {
-          await advanceToNextTrack();
-        }
+  return;
+}
       } catch (err) {
         console.error("handlePlayerStateChange error:", err);
       }
     },
     [
-      advanceToNextTrack,
-      authUserId,
-      getPlayerTime,
-      isHost,
-      reconcileGuestToHost,
-      sessionId,
-      updateRoomPlaybackState,
-    ]
+  authUserId,
+  getPlayerTime,
+  isHost,
+  reconcileGuestToHost,
+  sessionId,
+  updateRoomPlaybackState,
+]
   );
+  const sendChatMessage = useCallback(async () => {
+  if (!chatInput.trim() || !roomRef.current?.id) return;
 
-  const handleHostPlay = useCallback(async () => {
-  if (!isHost) return;
+  const { error } = await supabase.from("room_messages").insert([
+    {
+      room_id: roomRef.current.id,
+      sender_name: displayName.trim() || authUserEmail || "Guest",
+      message: chatInput.trim(),
+    },
+  ]);
 
-  if (!currentVideoId && queueRef.current.length > 0) {
-    await playQueueItemNow(queueRef.current[0]);
+  if (error) {
+    console.error("sendChatMessage error:", error);
+    alert("Failed to send message.");
     return;
   }
 
-  if (!playerRef.current || !currentVideoId) return;
+  setChatInput("");
+}, [chatInput, displayName, authUserEmail]);
 
-  playerRef.current.unMute?.();
-  playerRef.current.playVideo?.();
-}, [currentVideoId, isHost, playQueueItemNow]);
+const handleHostPlay = useCallback(async () => {
+  if (!isHost) return;
 
+  const currentQueue = [...(queueRef.current || [])];
+
+  if (!roomRef.current?.current_video_id && currentQueue.length > 0) {
+    await playQueueItemNow(currentQueue[0]);
+    return;
+  }
+
+if (!roomRef.current?.current_video_id) return;
+
+setPlayerReloadKey((prev) => prev + 1);
+
+await updateRoomPlaybackState({
+    is_playing: true,
+    playback_time: 0,
+    last_sync_at: new Date().toISOString(),
+    host_session_id: sessionId,
+    ...(authUserId ? { host_user_id: authUserId } : {}),
+  });
+}, [
+  authUserId,
+  isHost,
+  playQueueItemNow,
+  sessionId,
+  updateRoomPlaybackState,
+]);
+const playPreviousSong = useCallback(async () => {
+  if (!isHost || advancingRef.current) return;
+
+  const currentQueue = [...(queueRef.current || [])].sort((a, b) => {
+    return (a.position || 0) - (b.position || 0);
+  });
+
+  const currentVideoId =
+    roomRef.current?.current_video_id || playerVideoIdRef.current || "";
+
+  const currentIndex = currentQueue.findIndex(
+    (item) => item.video_id === currentVideoId
+  );
+
+  const previousIndex = currentIndex - 1;
+
+  if (previousIndex < 0) {
+    alert("You are at the first song.");
+    return;
+  }
+
+  await playQueueItemNow(currentQueue[previousIndex]);
+}, [isHost, playQueueItemNow]);
   const handleHostPause = useCallback(() => {
     if (!isHost || !playerRef.current || !currentVideoId) return;
     playerRef.current.pauseVideo?.();
@@ -1323,7 +1457,21 @@ roomRef.current = nextRoom;
         }
       )
       .subscribe();
+const presenceChannel = supabase.channel(`presence-${roomCode}`);
 
+presenceChannel
+  .on("presence", { event: "sync" }, () => {
+    const state = presenceChannel.presenceState();
+    const count = Object.keys(state).length;
+    setMemberCount(count);
+  })
+  .subscribe(async (status) => {
+    if (status === "SUBSCRIBED") {
+      await presenceChannel.track({
+        online_at: new Date().toISOString(),
+      });
+    }
+  });
     const queueChannel = supabase
       .channel(`room-queue-${room.id}`)
       .on(
@@ -1337,20 +1485,32 @@ roomRef.current = nextRoom;
         async () => {
   await refreshQueueNow();
 }
-      )
-      .subscribe();
+)
+.subscribe();
+
+const messagesChannel = supabase
+  .channel(`room-messages-${room.id}`)
+  .on(
+    "postgres_changes",
+    {
+      event: "INSERT",
+      schema: "public",
+      table: "room_messages",
+      filter: `room_id=eq.${room.id}`,
+    },
+    (payload) => {
+      setMessages((prev) => [...prev, payload.new]);
+    }
+  )
+  .subscribe();
 
     return () => {
-      supabase.removeChannel(roomChannel);
-      supabase.removeChannel(queueChannel);
-    };
+  supabase.removeChannel(roomChannel);
+  supabase.removeChannel(queueChannel);
+  supabase.removeChannel(messagesChannel);
+  supabase.removeChannel(presenceChannel);
+};
 }, [refreshQueueNow, room?.id, roomCode]);
-  useEffect(() => {
-    if (!playerRef.current) return;
-
-    if (isHost) playerRef.current.unMute?.();
-    else playerRef.current.mute?.();
-  }, [isHost, playerVideoId]);
 
   useEffect(() => {
     if (!playerReadyRef.current || !playerRef.current) return;
@@ -1460,6 +1620,9 @@ style={{
             <p style={styles.roleText}>
               Your role: <strong>{isHost ? "HOST" : "GUEST"}</strong>
             </p>
+            <p style={styles.roleText}>
+  Live Members: <strong>{memberCount}</strong>
+</p>
 {isHost && (
   <button
     style={{
@@ -1502,72 +1665,98 @@ style={{
 <div className="player-card" style={styles.playerCard}>
   {isHost && playerVideoId ? (
     <YouTube
-      key={playerVideoId}
-      videoId={playerVideoId}
-      opts={youtubeOpts}
-      onReady={handlePlayerReady}
-      onStateChange={handlePlayerStateChange}
-    />
+  key={playerVideoId}
+  videoId={playerVideoId}
+  opts={youtubeOpts}
+  onReady={handlePlayerReady}
+  onStateChange={handlePlayerStateChange}
+  onError={handlePlayerError}
+/>
   ) : isHost ? (
     <div style={styles.emptyPlayer}>
       Add a video to the queue, then press Play on a queue item.
     </div>
-  ) : (
-    <div style={styles.emptyPlayer}>
-      Guest mode: playback is controlled by the host.
+  ) : currentVideoId ? (
+  <div style={styles.guestPlayerPreview}>
+    <img
+      src={currentThumbnail}
+      alt={currentTitle}
+      style={styles.guestPlayerThumb}
+    />
+    <div style={styles.guestPlayerOverlay}>
+      <div style={styles.guestPlayerLabel}>Now playing</div>
+      <div style={styles.guestPlayerTitle}>{currentTitle}</div>
+      <div style={styles.guestPlayerSub}>
+        Playback is controlled by the host
+      </div>
     </div>
-  )}
+  </div>
+) : (
+  <div style={styles.emptyPlayer}>
+    Guest mode: playback is controlled by the host.
+  </div>
+)}
 </div>
 
-<div className="controls-card" style={styles.controlsCard}>            <div style={styles.controlsRow}>
-              <button
-  style={{
-    ...styles.primaryButton,
-    opacity:
-      !isHost || (!playerVideoId && queue.length === 0)
-        ? 0.45
-        : 1,
-    cursor:
-      !isHost || (!playerVideoId && queue.length === 0)
-        ? "not-allowed"
-        : "pointer",
-  }}
-  onClick={handleHostPlay}
-  disabled={!isHost || (!playerVideoId && queue.length === 0)}
->
-  Play
-</button>
+<div className="controls-card" style={styles.controlsCard}>
+  <div style={styles.controlsRow}>
+    <button
+      style={{
+        ...styles.primaryButton,
+        opacity:
+          !isHost || (!playerVideoId && queue.length === 0) ? 0.45 : 1,
+        cursor:
+          !isHost || (!playerVideoId && queue.length === 0)
+            ? "not-allowed"
+            : "pointer",
+      }}
+      onClick={handleHostPlay}
+      disabled={!isHost || (!playerVideoId && queue.length === 0)}
+    >
+      Play
+    </button>
 
-              <button
-  style={{
-    ...styles.primaryButton,
-    opacity: !isHost || !playerVideoId ? 0.45 : 1,
-    cursor:
-      !isHost || !playerVideoId
-        ? "not-allowed"
-        : "pointer",
-  }}
-  onClick={handleHostPause}
-  disabled={!isHost || !playerVideoId}
->
-  Pause
-</button>
-              <button
-  style={{
-    ...styles.secondaryButton,
-    ...(!isHost || queue.length === 0 ? styles.disabledButton : {}),
-  }}
-  onClick={advanceToNextTrack}
-  disabled={!isHost || queue.length === 0}
->
-  Skip Song
-</button>
+    <button
+      style={{
+        ...styles.primaryButton,
+        opacity: !isHost || !playerVideoId ? 0.45 : 1,
+        cursor: !isHost || !playerVideoId ? "not-allowed" : "pointer",
+      }}
+      onClick={handleHostPause}
+      disabled={!isHost || !playerVideoId}
+    >
+      Pause
+    </button>
+
+    <button
+      style={{
+        ...styles.secondaryButton,
+        ...(!isHost || queue.length === 0 ? styles.disabledButton : {}),
+      }}
+      onClick={advanceToNextTrack}
+      disabled={!isHost || queue.length === 0}
+    >
+      Skip Song
+    </button>
+
+    <button
+      style={{
+        ...styles.secondaryButton,
+        ...(!isHost || queue.length === 0
+          ? styles.disabledButton
+          : {}),
+      }}
+      onClick={playPreviousSong}
+      disabled={!isHost || queue.length === 0}
+    >
+      Previous Song
+    </button>
+
     <button style={styles.secondaryButton} onClick={handleResync}>
-  {isHost ? "Broadcast Sync" : "Resync"}
-</button>            
-
-            </div>
-          </div>
+      {isHost ? "Broadcast Sync" : "Resync"}
+    </button>
+  </div>
+</div>
 <div style={styles.instructionsCard}>
   <div style={styles.instructionsTitle}>How this room works</div>
   <div style={styles.instructionsList}>
@@ -1603,7 +1792,10 @@ style={styles.searchInput}    />
         const thumb = result?.snippet?.thumbnails?.medium?.url;
 
         return (
-<div style={styles.searchResultItem}>
+<div
+  key={videoId || title}
+  style={styles.searchResultItem}
+>
   <img
   src={getYouTubeThumb(videoId)}
   alt={title}
@@ -1758,6 +1950,51 @@ const styles = {
   flexDirection: "column",
   gap: "12px",
   marginTop: "16px",
+},
+guestPlayerPreview: {
+  position: "relative",
+  minHeight: "440px",
+  borderRadius: "22px",
+  overflow: "hidden",
+  background: "#111827",
+},
+
+guestPlayerThumb: {
+  width: "100%",
+  height: "440px",
+  objectFit: "cover",
+  display: "block",
+  filter: "brightness(0.55)",
+},
+
+guestPlayerOverlay: {
+  position: "absolute",
+  inset: 0,
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "flex-end",
+  padding: "24px",
+  color: "white",
+},
+
+guestPlayerLabel: {
+  fontSize: "0.95rem",
+  fontWeight: 800,
+  opacity: 0.85,
+  marginBottom: "8px",
+},
+
+guestPlayerTitle: {
+  fontSize: "2rem",
+  fontWeight: 900,
+  lineHeight: 1.1,
+},
+
+guestPlayerSub: {
+  marginTop: "10px",
+  fontSize: "1rem",
+  fontWeight: 700,
+  opacity: 0.85,
 },
 
 searchResultItem: {
