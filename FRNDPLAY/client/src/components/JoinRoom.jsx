@@ -69,12 +69,12 @@ export default function JoinRoom({ user, setRoom }) {
         />
 
         <input
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          placeholder="Room code"
-          style={styles.input}
-          disabled={loading}
-        />
+  value={code}
+  onChange={(e) => setCode(e.target.value.toUpperCase())}
+  placeholder="Room code"
+  style={{ ...styles.input, textAlign: "center", letterSpacing: "0.14em" }}
+  disabled={loading}
+/>
 
         <button onClick={joinRoom} disabled={loading} style={styles.primaryBtn}>
           {loading ? "Joining..." : "Join Room"}
@@ -109,34 +109,36 @@ const styles = {
     fontWeight: 600,
   },
   form: {
-    display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) 160px",
-    gap: 10,
-    alignItems: "center",
-  },
+  display: "flex",
+  flexDirection: "column",
+  gap: 12,
+  alignItems: "stretch",
+},
   input: {
-    width: "100%",
-    minWidth: 0,
-    padding: "13px 14px",
-    borderRadius: 12,
-    border: "1px solid #ddd",
-    fontSize: 16,
-    color: "#111827",
-    background: "#ffffff",
-    caretColor: "#111827",
-    WebkitTextFillColor: "#111827",
-    outline: "none",
-  },
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "15px 16px",
+  borderRadius: 14,
+  border: "1px solid #ddd",
+  fontSize: 16,
+  fontWeight: 700,
+  color: "#111827",
+  background: "#ffffff",
+  caretColor: "#111827",
+  WebkitTextFillColor: "#111827",
+  outline: "none",
+},
   primaryBtn: {
-    padding: "13px 14px",
-    borderRadius: 12,
-    border: "1px solid #111827",
-    background: "#111827",
-    color: "white",
-    cursor: "pointer",
-    fontWeight: 900,
-    fontSize: 16,
-  },
+  width: "100%",
+  padding: "15px 16px",
+  borderRadius: 14,
+  border: "1px solid #111827",
+  background: "#111827",
+  color: "white",
+  cursor: "pointer",
+  fontWeight: 900,
+  fontSize: 16,
+},
   tip: {
     marginTop: 10,
     opacity: 0.75,

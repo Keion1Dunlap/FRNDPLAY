@@ -116,17 +116,16 @@ export default function App() {
             and queue songs together in real time.
           </p>
 
-          <input
-            value={displayName}
-            onChange={handleNameChange}
-            placeholder="Your name"
-            style={styles.input}
-          />
+          
 
           <div style={styles.roomActions}>
-            <JoinRoom displayName={displayName} />
-            <CreateRoom displayName={displayName} />
-          </div>
+  <JoinRoom
+    user={session.user}
+    setRoom={() => {}}
+  />
+
+  <CreateRoom displayName={displayName} />
+</div>
 
           <div style={styles.featureList}>
             <div>🎵 Live queue sync</div>
