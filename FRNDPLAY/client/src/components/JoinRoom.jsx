@@ -32,14 +32,18 @@ if (!activeUser?.id) {
       if (!name) throw new Error("Enter your name.");
       if (!trimmed) throw new Error("Enter a room code.");
 
-      const { data: room, error: roomErr } = await supabase
-        .from("rooms")
-        .select("*")
-        .eq("code", trimmed)
-        .single();
+      const { data: rooms, error: roomErr } = await supabase
+  .from("rooms")
+  .select("*")
+  .eq("code", trimmed)
+  .order("created_at", { ascending: false })
+  .limit(1);
 
-      if (roomErr) throw roomErr;
-      if (!room?.id) throw new Error("Room not found.");
+if (roomErr) throw roomErr;
+
+const room = rooms?.[0];
+
+if (!room?.id) throw new Error("Room not found.");
 
       const { error: memberErr } = await supabase
         .from("room_members")
