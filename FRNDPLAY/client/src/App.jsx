@@ -127,11 +127,14 @@ if (room) {
           />
 
           <div style={styles.roomActions}>
-<JoinRoom
-  user={session.user}
-  setRoom={setRoom}
-  displayName={displayName}
-/></div>
+  <CreateRoom displayName={displayName} />
+
+  <JoinRoom
+    user={session.user}
+    setRoom={setRoom}
+    displayName={displayName}
+  />
+</div>
 
           <div style={styles.featureList}>
             <div>🎵 Live queue sync</div>

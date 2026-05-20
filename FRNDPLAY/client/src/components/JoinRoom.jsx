@@ -67,8 +67,7 @@ if (!activeUser?.id) {
   return (
     <div style={styles.card}>
       <h2 style={styles.title}>Join a room</h2>
-      <p style={styles.subtitle}>Enter your name and the room code to join the queue.</p>
-
+<p style={styles.subtitle}>Enter the room code to join the queue.</p>
       <div style={styles.form}>
         
 
