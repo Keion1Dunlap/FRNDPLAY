@@ -7,9 +7,10 @@ import RoomView from "./components/RoomView";
 import "./App.css";
 
 export default function App() {
-  const [session, setSession] = useState(null);
-  const [displayName, setDisplayName] = useState("");
-  const [loading, setLoading] = useState(true);
+const [session, setSession] = useState(null);
+const [displayName, setDisplayName] = useState("");
+const [room, setRoom] = useState(null);
+const [loading, setLoading] = useState(true);
 
   const roomCodeFromUrl = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
@@ -85,7 +86,9 @@ export default function App() {
       </div>
     );
   }
-
+if (room) {
+  return <RoomView room={room} displayName={displayName} />;
+}
   if (roomCodeFromUrl) {
     return <RoomView displayName={displayName} />;
   }
@@ -124,9 +127,8 @@ export default function App() {
           />
 
           <div style={styles.roomActions}>
-            <JoinRoom displayName={displayName} />
-            <CreateRoom displayName={displayName} />
-          </div>
+<JoinRoom user={session.user} setRoom={setRoom} />  <CreateRoom displayName={displayName} />
+</div>
 
           <div style={styles.featureList}>
             <div>🎵 Live queue sync</div>

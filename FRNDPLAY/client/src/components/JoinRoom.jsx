@@ -13,8 +13,21 @@ export default function JoinRoom({ user, setRoom }) {
     setLoading(true);
 
     try {
-      if (!user?.id) return setErrorMsg("Sign in to join this room.");
+      console.log("JoinRoom user:", user);
+console.log("JoinRoom user prop:", user);
 
+const {
+  data: { session },
+} = await supabase.auth.getSession();
+
+console.log("JoinRoom session:", session);
+
+const activeUser = user || session?.user;
+
+if (!activeUser?.id) {
+  setErrorMsg("Sign in to join this room.");
+  return;
+}
       const trimmed = String(code || "").trim().toUpperCase();
       const name = String(displayName || "").trim();
 
@@ -33,8 +46,7 @@ export default function JoinRoom({ user, setRoom }) {
       const { error: memberErr } = await supabase
         .from("room_members")
         .upsert(
-          { room_id: room.id, user_id: user.id, role: "guest" },
-          { onConflict: "room_id,user_id" }
+{ room_id: room.id, user_id: activeUser.id, role: "guest" },          { onConflict: "room_id,user_id" }
         );
 
       if (memberErr && memberErr.code !== "23505") throw memberErr;
@@ -109,34 +121,39 @@ const styles = {
     fontWeight: 600,
   },
   form: {
-    display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) 160px",
-    gap: 10,
-    alignItems: "center",
-  },
-  input: {
-    width: "100%",
-    minWidth: 0,
-    padding: "13px 14px",
-    borderRadius: 12,
-    border: "1px solid #ddd",
-    fontSize: 16,
-    color: "#111827",
-    background: "#ffffff",
-    caretColor: "#111827",
-    WebkitTextFillColor: "#111827",
-    outline: "none",
-  },
-  primaryBtn: {
-    padding: "13px 14px",
-    borderRadius: 12,
-    border: "1px solid #111827",
-    background: "#111827",
-    color: "white",
-    cursor: "pointer",
-    fontWeight: 900,
-    fontSize: 16,
-  },
+  display: "flex",
+  flexDirection: "column",
+  gap: 14,
+  alignItems: "stretch",
+},
+
+input: {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "16px 16px",
+  borderRadius: 14,
+  border: "1px solid #ddd",
+  fontSize: 17,
+  fontWeight: 700,
+  color: "#111827",
+  background: "#ffffff",
+  caretColor: "#111827",
+  WebkitTextFillColor: "#111827",
+  outline: "none",
+},
+
+primaryBtn: {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "16px 16px",
+  borderRadius: 14,
+  border: "1px solid #111827",
+  background: "#111827",
+  color: "white",
+  cursor: "pointer",
+  fontWeight: 900,
+  fontSize: 17,
+},
   tip: {
     marginTop: 10,
     opacity: 0.75,
