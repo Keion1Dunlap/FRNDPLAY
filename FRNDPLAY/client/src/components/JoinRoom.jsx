@@ -2,9 +2,7 @@
 import { useState } from "react";
 import { supabase } from "../supabase";
 
-export default function JoinRoom({ user, setRoom }) {
-  const [code, setCode] = useState("");
-  const [displayName, setDisplayName] = useState("");
+export default function JoinRoom({ user, setRoom, displayName }) {  const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -72,13 +70,7 @@ if (!activeUser?.id) {
       <p style={styles.subtitle}>Enter your name and the room code to join the queue.</p>
 
       <div style={styles.form}>
-        <input
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          placeholder="Your name"
-          style={styles.input}
-          disabled={loading}
-        />
+        
 
         <input
           value={code}
