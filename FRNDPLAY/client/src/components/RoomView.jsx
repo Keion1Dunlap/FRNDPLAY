@@ -1565,20 +1565,22 @@ return (
   </button>
 
   <button
+  <button
   style={styles.shareButton}
   onClick={async () => {
     const url = `${window.location.origin}/?room=${roomCode}`;
+    const shareText = `Join my FRNDPLAY room: ${url}`;
 
     if (navigator.share) {
       try {
         await navigator.share({
           title: "Join my FRNDPLAY room",
-          text: `Join my FRNDPLAY room: ${roomCode}`,
+          text: shareText,
           url,
         });
       } catch {}
     } else {
-      navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(shareText);
       alert("Invite link copied!");
     }
   }}
