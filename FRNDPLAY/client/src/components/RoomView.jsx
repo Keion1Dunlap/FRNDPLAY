@@ -1565,11 +1565,10 @@ return (
   </button>
 
   <button
-  <button
   style={styles.shareButton}
   onClick={async () => {
     const url = `${window.location.origin}/?room=${roomCode}`;
-    const shareText = `Join my FRNDPLAY room: ${url}`;
+    const shareText = `Join my FRNDPLAY room\n\nClick here to join: ${url}`;
 
     if (navigator.share) {
       try {
