@@ -1063,7 +1063,6 @@ posthog.capture("song_upvoted", {
       title: videoTitle,
     });
 
-    alert("Song added to queue!");
   } catch (err) {
     console.error("addVideoToQueue error:", err);
     alert(err.message || "Failed to add video.");
@@ -1214,7 +1213,6 @@ const addSearchResultToQueue = useCallback(
         title,
       });
 
-      alert("Song added to queue!");
     } catch (err) {
       console.error("addSearchResultToQueue error:", err);
       alert(err.message || "Failed to add video.");
