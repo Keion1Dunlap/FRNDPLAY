@@ -32,17 +32,17 @@ export default function Auth({ setUser }) {
 
   // ✅ FIXED GOOGLE LOGIN (THIS IS THE IMPORTANT PART)
   const signInWithGoogle = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: window.location.origin, // ✅ correct redirect
-      },
-    });
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: `${window.location.origin}/app`,
+    },
+  });
 
-    if (error) {
-      console.error("Google login error:", error.message);
-    }
-  };
+  if (error) {
+    console.error("Google login error:", error.message);
+  }
+};
 
   if (loading) return null;
 

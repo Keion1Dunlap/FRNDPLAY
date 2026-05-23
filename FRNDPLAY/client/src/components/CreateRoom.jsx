@@ -56,8 +56,7 @@ export default function CreateRoom() {
 
       if (!created) throw lastErr || new Error("Could not create room.");
 
-      window.location.href = `/?room=${created.code}`;
-    } catch (e) {
+window.location.href = `/app?room=${created.code}`;    } catch (e) {
       console.error("Create room error:", e);
       setError(String(e?.message ?? e));
     } finally {

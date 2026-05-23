@@ -60,8 +60,8 @@ serve(async (req) => {
 
     // 3) Success/cancel URLs must be absolute
     // Put room code + session_id in URL so frontend can verify
-    const success_url = `${origin}/?room=${encodeURIComponent(room.code)}&session_id={CHECKOUT_SESSION_ID}`;
-    const cancel_url = `${origin}/?room=${encodeURIComponent(room.code)}&checkout=cancel`;
+    const success_url = `${origin}/app?room=${encodeURIComponent(room.code)}&session_id={CHECKOUT_SESSION_ID}`;
+    const cancel_url = `${origin}/app?room=${encodeURIComponent(room.code)}&checkout=cancel`;
 
     // 4) Create checkout session
     const session = await stripe.checkout.sessions.create({
