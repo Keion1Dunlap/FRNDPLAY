@@ -5,10 +5,9 @@ export default function LandingPage() {
     <main className="landing-page">
       <section className="landing-section hero">
   <div className="landing-container">
-    <div className="logo-wrap">
-      <img src={frndplayLogo} alt="FRNDPLAY logo" className="logo" />
-      <span>FRNDPLAY</span>
-    </div>
+   <div className="hero-logo-wrap">
+  <img src={frndplayLogo} alt="FRNDPLAY logo" className="hero-logo" />
+</div>
 
     <h1>Turn song requests into a live shared queue.</h1>
 
@@ -79,30 +78,73 @@ export default function LandingPage() {
   </div>
 </section>
             
+<section className="landing-section visual-showcase">
+  <div className="landing-container">
+    <div className="showcase-header">
+      <p className="visual-label">Before vs after</p>
+      <h2>From messy chat to a clean live queue.</h2>
+      <p className="section-text section-intro">
+        FRNDPLAY gives creators and groups one place for song requests, voting,
+        and host control.
+      </p>
+    </div>
 
-      <section className="landing-section section-border">
-        <div className="landing-container problem-grid">
+    <div className="before-after-wide">
+      <div className="visual-card messy-card">
+        <div className="card-topline">
+          <span className="status-dot red-dot"></span>
+          <p>Without FRNDPLAY</p>
+        </div>
+
+        <h3>Chat gets flooded.</h3>
+
+        <div className="chat-stack large-chat">
+          <div>play snooze</div>
+          <div>who sings that?</div>
+          <div>do drake passionfruit</div>
+          <div>wait add my song</div>
+          <div>what’s next?</div>
+          <div>brent faiyaz clouded</div>
+          <div>you skipped mine</div>
+        </div>
+      </div>
+
+      <div className="arrow-visual">→</div>
+
+      <div className="visual-card clean-card">
+        <div className="card-topline">
+          <span className="status-dot green-dot"></span>
+          <p>With FRNDPLAY</p>
+        </div>
+
+        <h3>Everything goes into one queue.</h3>
+
+        <div className="mini-queue large-queue">
           <div>
-            <h2>Song requests get messy fast.</h2>
-            <p className="section-text">
-              When people drop songs in chat, DMs, or group messages, the host
-              has to search manually, ask who the artist is, keep track of
-              requests, and decide what plays next. FRNDPLAY turns that chaos
-              into one simple shared room.
-            </p>
+            <span>1</span>
+            <strong>SZA — Snooze</strong>
+            <p>12 votes • Added by Jay</p>
           </div>
-
-          <div className="card">
-            <p className="section-text">Without FRNDPLAY:</p>
-            <ul>
-              <li>❌ Lost song requests in chat</li>
-              <li>❌ Incomplete song names</li>
-              <li>❌ Manual searching</li>
-              <li>❌ No clean voting system</li>
-            </ul>
+          <div>
+            <span>2</span>
+            <strong>Drake — Passionfruit</strong>
+            <p>8 votes • Added by Mia</p>
+          </div>
+          <div>
+            <span>3</span>
+            <strong>Brent Faiyaz — Clouded</strong>
+            <p>6 votes • Added by Chris</p>
+          </div>
+          <div>
+            <span>4</span>
+            <strong>Future — Use Me</strong>
+            <p>5 votes • Added by Nia</p>
           </div>
         </div>
-      </section>
+      </div>
+    </div>
+  </div>
+</section>
 
       <section className="landing-section">
         <div className="landing-container center">
@@ -165,11 +207,13 @@ export default function LandingPage() {
           <div className="button-row">
             <a href="/app" className="primary-btn">Launch App</a>
             <a
-              href="mailto:hiimkeion@gmail.com?subject=FRNDPLAY Creator Test"
-              className="secondary-btn"
-            >
-              Request a Creator Test
-            </a>
+  href="https://mail.google.com/mail/?view=cm&fs=1&to=hiimkeion@gmail.com&su=FRNDPLAY%20Creator%20Test"
+  target="_blank"
+  rel="noreferrer"
+  className="secondary-btn"
+>
+  Request a Creator Test
+</a>
           </div>
         </div>
       </section>
@@ -182,13 +226,27 @@ export default function LandingPage() {
             live song request segments, aux battles, music reactions, or
             community hangouts.
           </p>
+<div className="creator-preview">
+  <div>
+    <span>🎥</span>
+    <strong>Run a live song request segment</strong>
+    <p>Invite viewers, collect songs, let the room vote, and keep control as host.</p>
+  </div>
 
-          <a
-            href="mailto:hiimkeion@gmail.com?subject=FRNDPLAY Creator Test"
-            className="white-btn"
-          >
-            Contact for a Creator Test
-          </a>
+  <div>
+    <span>🔥</span>
+    <strong>Perfect for aux battles</strong>
+    <p>Stop losing requests in chat and let the best songs rise to the top.</p>
+  </div>
+</div>
+         <a
+  href="https://mail.google.com/mail/?view=cm&fs=1&to=hiimkeion@gmail.com&su=FRNDPLAY%20Creator%20Test"
+  target="_blank"
+  rel="noreferrer"
+  className="white-btn"
+>
+  Contact for a Creator Test
+</a>
         </div>
       </section>
 
@@ -198,8 +256,13 @@ export default function LandingPage() {
           <div>
             <a href="/app">Launch App</a>
             <a href="#demo">Demo</a>
-            <a href="mailto:hiimkeion@gmail.com">Contact</a>
-          </div>
+<a
+  href="https://mail.google.com/mail/?view=cm&fs=1&to=hiimkeion@gmail.com&su=FRNDPLAY%20Creator%20Test"
+  target="_blank"
+  rel="noreferrer"
+>
+  Contact
+</a>          </div>
         </div>
       </footer>
     </main>
