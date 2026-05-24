@@ -276,9 +276,7 @@ const [chatInput, setChatInput] = useState("");
   const [songMemory, setSongMemory] = useState([]);
   const [currentQueueIndex, setCurrentQueueIndex] = useState(-1);
 const [songMemoryIndex, setSongMemoryIndex] = useState(-1);
-  const [playerReady, setPlayerReady] = useState(false);
   const [playerVideoId, setPlayerVideoId] = useState("");
-  const [playerReloadKey, setPlayerReloadKey] = useState(0);
   const [authUserId, setAuthUserId] = useState(null);
   const [authUserEmail, setAuthUserEmail] = useState("");
   const [userVotes, setUserVotes] = useState([]);
@@ -619,14 +617,22 @@ posthog.capture("room_joined", {
 
     try {
       await updateRoomPlaybackState({
-        current_video_id: activeRoom.current_video_id || "",
-        current_title: activeRoom.current_title || "",
-        is_playing: isPlayingNow,
-        playback_time: currentTime,
-        last_sync_at: new Date().toISOString(),
-        host_session_id: sessionId,
-        ...(authUserId ? { host_user_id: authUserId } : {}),
-      });
+  current_video_id: item.video_id,
+  current_title: item.title || "Untitled",
+  is_playing: true,
+  playback_time: 0,
+  last_sync_at: new Date().toISOString(),
+  host_session_id: sessionId,
+  ...(authUserId ? { host_user_id: authUserId } : {}),
+});
+
+setTimeout(() => {
+  try {
+    playerRef.current?.playVideo?.();
+  } catch (err) {
+    console.error("playQueueItemNow playVideo error:", err);
+  }
+}, 800);
     } catch (err) {
       console.error("pushHostState error:", err);
     }
@@ -1322,22 +1328,38 @@ const handleHostPlay = useCallback(async () => {
 
   if (!roomRef.current?.current_video_id && currentQueue.length > 0) {
     await playQueueItemNow(currentQueue[0]);
+
+    setTimeout(() => {
+      try {
+        playerRef.current?.playVideo?.();
+      } catch (err) {
+        console.error("play after queue item error:", err);
+      }
+    }, 800);
+
     return;
   }
 
-if (!roomRef.current?.current_video_id) return;
+  if (!roomRef.current?.current_video_id) return;
 
-setPlayerReloadKey((prev) => prev + 1);
+  try {
+    suppressPauseUntilRef.current = Date.now() + 2500;
 
-await updateRoomPlaybackState({
-    is_playing: true,
-    playback_time: 0,
-    last_sync_at: new Date().toISOString(),
-    host_session_id: sessionId,
-    ...(authUserId ? { host_user_id: authUserId } : {}),
-  });
+    playerRef.current?.playVideo?.();
+
+    await updateRoomPlaybackState({
+      is_playing: true,
+      playback_time: getPlayerTime(),
+      last_sync_at: new Date().toISOString(),
+      host_session_id: sessionId,
+      ...(authUserId ? { host_user_id: authUserId } : {}),
+    });
+  } catch (err) {
+    console.error("handleHostPlay error:", err);
+  }
 }, [
   authUserId,
+  getPlayerTime,
   isHost,
   playQueueItemNow,
   sessionId,
@@ -1567,7 +1589,7 @@ return (
   <button
   style={styles.shareButton}
   onClick={async () => {
-    const url = `${window.location.origin}/?room=${roomCode}`;
+    const url = `${window.location.origin}/app?room=${roomCode}`;
     const shareText = `Join my FRNDPLAY room\n\nClick here to join: ${url}`;
 
     if (navigator.share) {
@@ -1589,7 +1611,7 @@ return (
 
 <div style={styles.qrCard}>
   <QRCodeCanvas
-    value={`${window.location.origin}/?room=${roomCode}`}
+    value={`${window.location.origin}/app?room=${roomCode}`}
     size={140}
   />
 
