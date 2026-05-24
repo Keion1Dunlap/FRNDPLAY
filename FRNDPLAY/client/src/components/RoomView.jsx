@@ -275,6 +275,7 @@ const [chatInput, setChatInput] = useState("");
   const [queueBusyId, setQueueBusyId] = useState(null);
   const [songMemory, setSongMemory] = useState([]);
   const [currentQueueIndex, setCurrentQueueIndex] = useState(-1);
+  const [playerReady, setPlayerReady] = useState(false);
 const [songMemoryIndex, setSongMemoryIndex] = useState(-1);
   const [playerVideoId, setPlayerVideoId] = useState("");
   const [authUserId, setAuthUserId] = useState(null);
@@ -608,42 +609,34 @@ posthog.capture("room_joined", {
   }, [authUserId, roomCode, sessionId]);
 
   const pushHostState = useCallback(async () => {
-    const activeRoom = roomRef.current;
-    if (!isHost || !playerRef.current || !activeRoom?.current_video_id) return;
+  const activeRoom = roomRef.current;
+  if (!isHost || !playerRef.current || !activeRoom?.current_video_id) return;
 
-    const playerState = getPlayerState();
-    const isPlayingNow = playerState === 1;
-    const currentTime = getPlayerTime();
+  const playerState = getPlayerState();
+  const isPlayingNow = playerState === 1;
+  const currentTime = getPlayerTime();
 
-    try {
-      await updateRoomPlaybackState({
-  current_video_id: item.video_id,
-  current_title: item.title || "Untitled",
-  is_playing: true,
-  playback_time: 0,
-  last_sync_at: new Date().toISOString(),
-  host_session_id: sessionId,
-  ...(authUserId ? { host_user_id: authUserId } : {}),
-});
-
-setTimeout(() => {
   try {
-    playerRef.current?.playVideo?.();
+    await updateRoomPlaybackState({
+      current_video_id: activeRoom.current_video_id || "",
+      current_title: activeRoom.current_title || "",
+      is_playing: isPlayingNow,
+      playback_time: currentTime,
+      last_sync_at: new Date().toISOString(),
+      host_session_id: sessionId,
+      ...(authUserId ? { host_user_id: authUserId } : {}),
+    });
   } catch (err) {
-    console.error("playQueueItemNow playVideo error:", err);
+    console.error("pushHostState error:", err);
   }
-}, 800);
-    } catch (err) {
-      console.error("pushHostState error:", err);
-    }
-  }, [
-    authUserId,
-    getPlayerState,
-    getPlayerTime,
-    isHost,
-    sessionId,
-    updateRoomPlaybackState,
-  ]);
+}, [
+  authUserId,
+  getPlayerState,
+  getPlayerTime,
+  isHost,
+  sessionId,
+  updateRoomPlaybackState,
+]);
 
   const startHostSyncLoop = useCallback(() => {
   if (hostSyncIntervalRef.current) {
@@ -810,14 +803,22 @@ const playQueueItemNow = useCallback(
       playerVideoIdRef.current = item.video_id;
 
       await updateRoomPlaybackState({
-        current_video_id: item.video_id,
-        current_title: item.title || "Untitled",
-        is_playing: false,
-        playback_time: 0,
-        last_sync_at: new Date().toISOString(),
-        host_session_id: sessionId,
-        ...(authUserId ? { host_user_id: authUserId } : {}),
-      });
+  current_video_id: item.video_id,
+  current_title: item.title || "Untitled",
+  is_playing: true,
+  playback_time: 0,
+  last_sync_at: new Date().toISOString(),
+  host_session_id: sessionId,
+  ...(authUserId ? { host_user_id: authUserId } : {}),
+});
+
+setTimeout(() => {
+  try {
+    playerRef.current?.playVideo?.();
+  } catch (err) {
+    console.error("playQueueItemNow playVideo error:", err);
+  }
+}, 800);
 
     } catch (err) {
       console.error("playQueueItemNow error:", err);
