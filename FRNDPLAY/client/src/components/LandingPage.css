@@ -510,4 +510,19 @@ h2 {
   .landing-section {
     padding: 64px 20px;
   }
+  .demo-video-wrap {
+  max-width: 860px;
+  margin: 36px auto;
+  border-radius: 28px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.055);
+  box-shadow: 0 30px 90px rgba(0,0,0,0.35);
+}
+
+.demo-video {
+  display: block;
+  width: 100%;
+  height: auto;
+}
 }

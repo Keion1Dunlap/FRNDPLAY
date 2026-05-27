@@ -194,29 +194,42 @@ export default function LandingPage() {
       </section>
 
       <section id="demo" className="landing-section">
-        <div className="landing-container center">
-          <h2>See FRNDPLAY in action.</h2>
-          <p className="section-text">
-            Demo video coming soon. The app is already live and ready to test.
-          </p>
+  <div className="landing-container center">
+    <h2>See FRNDPLAY in action.</h2>
+    <p className="section-text">
+      Watch how hosts and guests create a room, add songs, vote, and build a shared queue together.
+    </p>
 
-          <div className="demo-box">
-            Demo placeholder — replace this section when your demo video is ready.
-          </div>
+    <div className="demo-video-wrap">
+      <video controls preload="metadata" className="demo-video">
+        <source src="/frndplay-demo.mp4" type="video/mp4" />
+        Your browser does not support the video tag.
+      </video>
+    </div>
 
-          <div className="button-row">
-            <a href="/app" className="primary-btn">Launch App</a>
-            <a
-  href="https://mail.google.com/mail/?view=cm&fs=1&to=hiimkeion@gmail.com&su=FRNDPLAY%20Creator%20Test"
-  target="_blank"
-  rel="noreferrer"
-  className="secondary-btn"
->
-  Request a Creator Test
-</a>
-          </div>
-        </div>
-      </section>
+    <div className="button-row">
+      <a href="/app" className="primary-btn">Launch App</a>
+
+      <a
+        href="/frndplay-demo.mp4"
+        target="_blank"
+        rel="noreferrer"
+        className="secondary-btn"
+      >
+        Open Demo
+      </a>
+
+      <a
+        href="https://mail.google.com/mail/?view=cm&fs=1&to=hiimkeion@gmail.com&su=FRNDPLAY%20Creator%20Test"
+        target="_blank"
+        rel="noreferrer"
+        className="secondary-btn"
+      >
+        Request a Creator Test
+      </a>
+    </div>
+  </div>
+</section>
 
       <section className="landing-section creator-cta">
         <div className="landing-container center">
