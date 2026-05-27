@@ -511,19 +511,19 @@ h2 {
     padding: 64px 20px;
   }
   .demo-video-wrap {
-  width: min(360px, 92vw);
-  margin: 36px auto;
-  border-radius: 28px;
+  width: min(240px, 88vw);
+  margin: 24px auto 14px;
+  border-radius: 20px;
   overflow: hidden;
   border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(255,255,255,0.055);
-  box-shadow: 0 30px 90px rgba(0,0,0,0.35);
+  background: black;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
 }
 
 .demo-video {
   display: block;
   width: 100%;
-  max-height: 640px;
+  height: 420px;
   object-fit: contain;
   background: black;
 }
