@@ -511,7 +511,7 @@ h2 {
     padding: 64px 20px;
   }
   .demo-video-wrap {
-  max-width: 860px;
+  width: min(360px, 92vw);
   margin: 36px auto;
   border-radius: 28px;
   overflow: hidden;
@@ -523,6 +523,8 @@ h2 {
 .demo-video {
   display: block;
   width: 100%;
-  height: auto;
+  max-height: 640px;
+  object-fit: contain;
+  background: black;
 }
 }
