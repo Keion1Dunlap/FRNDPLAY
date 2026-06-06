@@ -2,7 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
 import "./index.css";
-
+import "./styles/queueFeatures.css";
 import posthog from "posthog-js";
 import { PostHogProvider } from "@posthog/react";
 

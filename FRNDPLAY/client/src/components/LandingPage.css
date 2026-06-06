@@ -537,10 +537,10 @@ h2 {
 
 @media (max-width: 600px) {
   .demo-video-wrap {
-    width: min(200px, 82vw);
-  }
+  width: min(180px, 82vw);
+}
 
-  .demo-video {
-    height: 355px;
-  }
+.demo-video {
+  height: 320px;
+}
 }
