@@ -1,3 +1,5 @@
+import { searchYouTubeSongs } from "../lib/youtube";
+import AutoQueueControls from "./AutoQueueControls";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabase";
 import { QRCodeCanvas } from "qrcode.react";
@@ -269,6 +271,9 @@ posthog.capture("room_ended", {
   const [queue, setQueue] = useState([]);
   const [messages, setMessages] = useState([]);
 const [chatInput, setChatInput] = useState("");
+const [autoQueueEnabled, setAutoQueueEnabled] = useState(false);
+const [autoQueueVibe, setAutoQueueVibe] = useState("rap");
+const [isAutoQueuing, setIsAutoQueuing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [videoInput, setVideoInput] = useState("");
@@ -321,6 +326,55 @@ const currentQueueIndexRef = useRef(-1);
       room.host_session_id === sessionId
     );
   }, [room, authUserId, sessionId]);
+  useEffect(() => {
+  if (!isHost) return;
+  if (!autoQueueEnabled) return;
+  if (isAutoQueuing) return;
+  if (queue.length >= 2) return;
+  autoFillQueue();
+}, [isHost, autoQueueEnabled, autoQueueVibe, queue.length]);
+
+async function autoFillQueue() {
+  if (!isHost || !room?.id || isAutoQueuing) return;
+  setIsAutoQueuing(true);
+  try {
+    const results = await searchYouTubeSongs(`${autoQueueVibe} music popular songs`, 8);
+    if (!results.length) return;
+    const existingIds = new Set(queue.map((q) => q.video_id));
+    const toAdd = results.filter((s) => s?.video_id && !existingIds.has(s.video_id)).slice(0, 3);
+    if (!toAdd.length) return;
+    const startPos = Math.max(0, ...queue.map((q) => q.position || 0)) + 1;
+    const rows = toAdd.map((song, i) => ({
+      room_id: room.id,
+      video_id: song.video_id,
+      title: song.title || "Untitled",
+      added_by: authUserId || sessionId,
+      added_by_name: displayName || authUserEmail || "Auto Queue",
+      position: startPos + i,
+      votes: 0,
+      source: "auto_queue",
+    }));
+    const { error } = await supabase.from("room_queue").insert(rows);
+    if (error) throw error;
+    await refreshQueueNow();
+  } catch (err) {
+    console.error("autoFillQueue error:", err);
+  } finally {
+    setIsAutoQueuing(false);
+  }
+}
+
+async function updateAutoQueueSetting(enabled) {
+  if (!isHost || !room?.id) return;
+  setAutoQueueEnabled(enabled);
+  await supabase.from("rooms").update({ auto_queue_enabled: enabled }).eq("id", room.id);
+}
+
+async function updateAutoQueueVibe(vibe) {
+  if (!isHost || !room?.id) return;
+  setAutoQueueVibe(vibe);
+  await supabase.from("rooms").update({ auto_queue_vibe: vibe }).eq("id", room.id);
+}
 
   const currentVideoId = room?.current_video_id || "";
   const currentTitle = room?.current_title || "Nothing playing";
@@ -1857,8 +1911,16 @@ style={{
         <div className="room-right" style={styles.rightColumn}>
   <div className="queue-panel" style={styles.queuePanel}>
     <div style={styles.queueHeaderRow}>
-<div className="queue-header" style={styles.queueHeader}>    Queue ({queue.length})
-  </div>
+   {isHost && (
+  <AutoQueueControls
+    enabled={autoQueueEnabled}
+    vibe={autoQueueVibe}
+    isAutoQueuing={isAutoQueuing}
+    onToggle={updateAutoQueueSetting}
+    onChangeVibe={updateAutoQueueVibe}
+  />
+)}   
+  <div className="queue-header" style={styles.queueHeader}>Queue ({queue.length})</div>
 
   <button
     style={{
@@ -2082,6 +2144,13 @@ searchChannel: {
   marginBottom: "16px",
   gap: "10px",
   flexWrap: "wrap",
+},
+
+queueHeader: {
+  fontSize: "2.2rem",
+  fontWeight: 900,
+  marginBottom: "18px",
+  color: "#111827",
 },
 
 clearQueueButton: {
@@ -2464,5 +2533,4 @@ instructionsList: {
 mobileNotice: {
   display: "none",
 },
-
 };
