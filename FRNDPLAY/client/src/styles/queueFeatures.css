@@ -1,214 +1,452 @@
-.song-search-box {
-  margin-bottom: 1rem;
-}
+/* =========================================================
+   FRNDPLAY Queue Features
+   Mobile-safe queue layout + clean queue cards
+   ========================================================= */
 
-.song-search-box input {
+/* Main queue section */
+.queue-section,
+.queue-container,
+.queue-panel {
   width: 100%;
-  padding: 0.75rem;
-  border-radius: 10px;
-  border: 1px solid #333;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
-.search-status {
-  margin-top: 0.5rem;
-  font-size: 0.85rem;
-  opacity: 0.75;
-}
-
-.search-results {
-  margin-top: 0.75rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.search-result,
-.queue-song {
+/* Queue header area */
+.queue-header,
+.queue-top,
+.queue-title-row {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin-bottom: 18px;
+  box-sizing: border-box;
 }
 
-.search-result-thumbnail,
-.queue-song-thumbnail {
-  width: 56px;
-  height: 56px;
-  border-radius: 8px;
-  object-fit: cover;
-  flex-shrink: 0;
-}
-
-.search-result-info,
-.queue-song-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.search-result-info p,
-.queue-song-info p {
+.queue-header h2,
+.queue-title-row h2,
+.queue-panel h2 {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: 32px;
+  line-height: 1.1;
+  font-weight: 900;
+  color: #111827;
 }
 
-.search-result-info span {
-  display: block;
-  margin-top: 0.2rem;
-  font-size: 0.75rem;
-  opacity: 0.7;
+/* Auto Queue row */
+.auto-queue-row,
+.auto-queue-toggle,
+.autoqueue-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  font-size: 17px;
+  font-weight: 500;
+  color: #111827;
 }
 
-.search-result button,
-.queue-song-actions button {
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
+.auto-queue-row input,
+.auto-queue-toggle input,
+.autoqueue-row input {
+  width: 18px;
+  height: 18px;
+  accent-color: #111827;
+}
+
+/* Clear Queue button */
+.clear-queue-button,
+.clear-queue-btn,
+.queue-clear-button {
   border: none;
+  outline: none;
+  cursor: pointer;
+  background: #fee2e2;
+  color: #8b2f2f;
+  font-weight: 800;
+  font-size: 15px;
+  border-radius: 16px;
+  padding: 14px 22px;
+  min-height: 48px;
+}
+
+/* Queue list */
+.queue-list,
+.queue-items {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Queue card */
+.queue-item,
+.queue-card,
+.queue-row,
+.queued-song {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #e5e7eb;
+  border-radius: 20px;
+  background: #ffffff;
+  padding: 16px;
+  overflow: hidden;
+}
+
+/* Main content inside card */
+.queue-item-main,
+.queue-card-main,
+.queue-row-main,
+.queued-song-main {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Thumbnail */
+.queue-thumbnail,
+.queue-item img,
+.queue-card img,
+.queue-row img,
+.queued-song img {
+  width: 170px;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 16px;
+  display: block;
+  flex-shrink: 0;
+  background: #111827;
+}
+
+/* Song text wrapper */
+.queue-info,
+.queue-item-info,
+.song-info,
+.track-info,
+.queued-song-info {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* Song title */
+.queue-title,
+.queue-item-title,
+.song-title,
+.track-title,
+.queued-song-title {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+
+  font-size: 18px;
+  line-height: 1.25;
+  font-weight: 800;
+  color: #111827;
+
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+  hyphens: auto;
+}
+
+/* Added by / subtitle */
+.queue-subtitle,
+.queue-item-subtitle,
+.song-subtitle,
+.track-subtitle,
+.added-by,
+.queued-song-subtitle {
+  display: block;
+  margin-top: 6px;
+
+  font-size: 14px;
+  line-height: 1.3;
+  font-weight: 600;
+  color: #6b7280;
+
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+/* Queue buttons */
+.queue-actions,
+.queue-item-actions,
+.song-actions,
+.track-actions,
+.queued-song-actions {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(90px, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.queue-actions button,
+.queue-item-actions button,
+.song-actions button,
+.track-actions button,
+.queued-song-actions button {
+  width: 100%;
+  min-height: 46px;
+  border: none;
+  outline: none;
+  border-radius: 14px;
+  background: #f3f4f6;
+  color: #111827;
+  font-size: 15px;
+  font-weight: 800;
   cursor: pointer;
 }
 
-.queue-song-actions {
-  display: flex;
-  gap: 0.5rem;
-  flex-shrink: 0;
+.queue-actions button:disabled,
+.queue-item-actions button:disabled,
+.song-actions button:disabled,
+.track-actions button:disabled,
+.queued-song-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
-.auto-queue-controls {
-  margin-bottom: 1rem;
-  padding: 0.75rem;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.06);
+/* Empty queue text */
+.empty-queue,
+.queue-empty {
+  padding: 22px;
+  text-align: center;
+  color: #6b7280;
+  font-size: 15px;
+  font-weight: 600;
 }
 
-.auto-queue-controls label {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.auto-queue-controls select {
-  margin-top: 0.75rem;
-  width: 100%;
-  padding: 0.6rem;
-  border-radius: 8px;
-}
-
-.auto-queue-badge {
-  display: inline-block;
-  margin-top: 0.25rem;
-  font-size: 0.75rem;
-  opacity: 0.75;
-}
-
-.auto-queue-status {
-  margin: 0.5rem 0 0;
-  font-size: 0.85rem;
-  opacity: 0.8;
-}
-
-@media (max-width: 600px) {
-  .search-result,
-  .queue-song {
-    align-items: flex-start;
-  }
-
-  .queue-song-actions {
-    flex-direction: column;
-  }
-
-  .search-result button {
-    align-self: center;
-  }
-  /* ================================
-   Mobile Queue Card Cleanup
-   ================================ */
+/* =========================================================
+   MOBILE FIX
+   This is the important part for your screenshot.
+   ========================================================= */
 
 @media (max-width: 700px) {
+  .queue-section,
+  .queue-container,
+  .queue-panel {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+    box-sizing: border-box;
+  }
+
+  .queue-header,
+  .queue-top,
+  .queue-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+    width: 100%;
+  }
+
+  .queue-header h2,
+  .queue-title-row h2,
+  .queue-panel h2 {
+    font-size: 28px;
+    line-height: 1.1;
+  }
+
+  .clear-queue-button,
+  .clear-queue-btn,
+  .queue-clear-button {
+    font-size: 14px;
+    padding: 13px 18px;
+    border-radius: 15px;
+    min-height: 46px;
+    white-space: nowrap;
+  }
+
+  .queue-list,
+  .queue-items {
+    gap: 14px;
+    width: 100%;
+    max-width: 100%;
+  }
+
   .queue-item,
   .queue-card,
-  .queue-row {
-    display: grid;
-    grid-template-columns: 115px minmax(0, 1fr);
-    gap: 12px;
-    align-items: start;
-    width: 100%;
-    padding: 14px;
-    box-sizing: border-box;
+  .queue-row,
+  .queued-song {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 14px !important;
+    border-radius: 18px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+
+  .queue-item-main,
+  .queue-card-main,
+  .queue-row-main,
+  .queued-song-main {
+    display: grid !important;
+    grid-template-columns: 130px minmax(0, 1fr) !important;
+    gap: 12px !important;
+    align-items: start !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
   }
 
   .queue-thumbnail,
   .queue-item img,
   .queue-card img,
-  .queue-row img {
-    width: 115px;
-    height: 82px;
-    object-fit: cover;
-    border-radius: 14px;
-    flex-shrink: 0;
+  .queue-row img,
+  .queued-song img {
+    width: 130px !important;
+    height: 86px !important;
+    object-fit: cover !important;
+    border-radius: 14px !important;
+    flex-shrink: 0 !important;
   }
 
   .queue-info,
   .queue-item-info,
   .song-info,
-  .track-info {
-    min-width: 0;
-    width: 100%;
-    overflow: hidden;
+  .track-info,
+  .queued-song-info {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
   }
 
   .queue-title,
   .queue-item-title,
   .song-title,
-  .track-title {
-    display: block;
-    width: 100%;
-    max-width: 100%;
-    font-size: 15px;
-    line-height: 1.25;
-    font-weight: 700;
+  .track-title,
+  .queued-song-title {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
 
-    white-space: normal;
-    word-break: normal;
-    overflow-wrap: break-word;
-    hyphens: auto;
+    font-size: 15px !important;
+    line-height: 1.25 !important;
+    font-weight: 800 !important;
+    color: #111827 !important;
+
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
+    hyphens: auto !important;
   }
 
   .queue-subtitle,
   .queue-item-subtitle,
   .song-subtitle,
-  .added-by {
-    font-size: 13px;
-    line-height: 1.25;
-    color: #6b7280;
-    margin-top: 6px;
+  .track-subtitle,
+  .added-by,
+  .queued-song-subtitle {
+    font-size: 13px !important;
+    line-height: 1.3 !important;
+    margin-top: 6px !important;
 
-    white-space: normal;
-    word-break: normal;
-    overflow-wrap: break-word;
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: break-word !important;
   }
 
   .queue-actions,
   .queue-item-actions,
   .song-actions,
-  .track-actions {
-    grid-column: 1 / -1;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    width: 100%;
-    margin-top: 12px;
+  .track-actions,
+  .queued-song-actions {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-top: 14px !important;
+    box-sizing: border-box !important;
   }
 
   .queue-actions button,
   .queue-item-actions button,
   .song-actions button,
-  .track-actions button {
-    width: 100%;
-    min-height: 48px;
-    border-radius: 14px;
-    font-size: 15px;
-    font-weight: 700;
+  .track-actions button,
+  .queued-song-actions button {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 48px !important;
+    border-radius: 14px !important;
+    font-size: 15px !important;
+    font-weight: 800 !important;
+    padding: 10px 12px !important;
   }
 }
+
+/* Extra small phones */
+@media (max-width: 430px) {
+  .queue-item-main,
+  .queue-card-main,
+  .queue-row-main,
+  .queued-song-main {
+    grid-template-columns: 118px minmax(0, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  .queue-thumbnail,
+  .queue-item img,
+  .queue-card img,
+  .queue-row img,
+  .queued-song img {
+    width: 118px !important;
+    height: 78px !important;
+  }
+
+  .queue-title,
+  .queue-item-title,
+  .song-title,
+  .track-title,
+  .queued-song-title {
+    font-size: 14px !important;
+    line-height: 1.25 !important;
+  }
+
+  .queue-actions,
+  .queue-item-actions,
+  .song-actions,
+  .track-actions,
+  .queued-song-actions {
+    grid-template-columns: 1fr 1fr !important;
+  }
+}
+
+/* Nuclear fix for vertical text */
+.queue-title,
+.queue-item-title,
+.song-title,
+.track-title,
+.queued-song-title,
+.queue-info,
+.queue-item-info,
+.song-info,
+.track-info,
+.queued-song-info {
+  writing-mode: horizontal-tb !important;
+  text-orientation: mixed !important;
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
 }
