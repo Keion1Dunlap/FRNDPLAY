@@ -285,6 +285,18 @@ const [songMemoryIndex, setSongMemoryIndex] = useState(-1);
 const [searchResults, setSearchResults] = useState([]);
 const [searchLoading, setSearchLoading] = useState(false);
 
+useEffect(() => {
+  if (!searchQuery.trim()) {
+    setSearchResults([]);
+    return;
+  }
+
+  const timer = setTimeout(() => {
+    searchYouTube();
+  }, 500); // waits 500ms after user stops typing
+
+  return () => clearTimeout(timer);
+}, [searchQuery]);
 // ADD THIS
 const [memberCount, setMemberCount] = useState(1);
   const playerRef = useRef(null);
@@ -1792,19 +1804,13 @@ style={{
   <div style={styles.sectionHeading}>Search YouTube</div>
 
   <div style={styles.addRow}>
-    <input
-      value={searchQuery}
-      onChange={(e) => setSearchQuery(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") searchYouTube();
-      }}
-      placeholder="Search for a song or video"
-style={styles.searchInput}    />
-
-    <button style={styles.addButton} onClick={searchYouTube}>
-      {searchLoading ? "Searching..." : "Search"}
-    </button>
-  </div>
+  <input
+    value={searchQuery}
+    onChange={(e) => setSearchQuery(e.target.value)}
+    placeholder="Search for a song or video"
+    style={{ ...styles.searchInput, gridColumn: "1 / -1" }}
+  />
+</div>
 
   {searchResults.length > 0 && (
     <div style={styles.searchResults}>
