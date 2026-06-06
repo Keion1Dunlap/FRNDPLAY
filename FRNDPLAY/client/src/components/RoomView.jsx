@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabase";
 import { QRCodeCanvas } from "qrcode.react";
-import { usePostHog } from "@posthog/react";
+import { usePostHog } from "posthog-js/react";
 import YouTube from "react-youtube";
 const responsiveCss = `
 * {
