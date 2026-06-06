@@ -5,6 +5,12 @@ import { supabase } from "../supabase";
 import { QRCodeCanvas } from "qrcode.react";
 import { usePostHog } from "posthog-js/react";
 import YouTube from "react-youtube";
+import {
+  savePlayedSong,
+  getNextQueueSong,
+  removeQueueSong,
+  generateSongFromHistory,
+} from "../lib/playbackHelpers";
 const responsiveCss = `
 * {
   box-sizing: border-box;
@@ -101,6 +107,46 @@ iframe {
     width: 100% !important;
   }
 
+
+    await savePlayedSong({
+      roomId,
+      song: songToPlay,
+    });
+
+    await removeQueueSong(nextQueueSong.id);
+
+    if (typeof handlePlay === "function") {
+      handlePlay(nextQueueSong.video_id);
+    }
+
+    return;
+  }
+
+  // 2. If queue is empty, only auto-generate if Auto Queue is enabled
+  if (!autoQueueEnabled) {
+    console.log("Queue empty and Auto Queue is off.");
+    return;
+  }
+
+  const generatedSong = await generateSongFromHistory({
+    roomId,
+    vibe: autoQueueVibe || "rap",
+  });
+
+  if (!generatedSong?.video_id) {
+    console.log("No auto-generated song found.");
+    return;
+  }
+
+  await savePlayedSong({
+    roomId,
+    song: generatedSong,
+  });
+
+  if (typeof handlePlay === "function") {
+    handlePlay(generatedSong.video_id);
+  }
+}
   .player-card iframe {
     width: 100% !important;
     height: 220px !important;
@@ -903,38 +949,123 @@ setTimeout(() => {
     updateRoomPlaybackState,
   ]
 );
+const playNextSong = useCallback(async () => {
+  if (!isHost || advancingRef.current || !roomRef.current?.id) return;
 
+  advancingRef.current = true;
+  suppressPauseUntilRef.current = Date.now() + 3000;
+
+  try {
+    const currentRoom = roomRef.current;
+    const currentQueue = [...(queueRef.current || [])].sort((a, b) => {
+      const voteDiff = (b.votes || 0) - (a.votes || 0);
+      if (voteDiff !== 0) return voteDiff;
+      return (a.position || 0) - (b.position || 0);
+    });
+
+    let nextSong = null;
+    let shouldRemoveFromQueue = false;
+
+    if (currentQueue.length > 0) {
+      nextSong = currentQueue[0];
+      shouldRemoveFromQueue = true;
+    } else if (autoQueueEnabled) {
+      const generatedSong = await generateSongFromHistory({
+        roomId: currentRoom.id,
+        vibe: autoQueueVibe || "rap",
+      });
+
+      if (generatedSong?.video_id) {
+        nextSong = {
+          video_id: generatedSong.video_id,
+          title: generatedSong.title || "Untitled",
+          source: "auto_queue",
+        };
+      }
+    }
+
+    if (!nextSong?.video_id) {
+      await updateRoomPlaybackState({
+        is_playing: false,
+        playback_time: 0,
+        last_sync_at: new Date().toISOString(),
+      });
+
+      return;
+    }
+
+    if (currentRoom.current_video_id) {
+      await savePlayedSong({
+        roomId: currentRoom.id,
+        song: {
+          video_id: currentRoom.current_video_id,
+          title: currentRoom.current_title || "Untitled",
+          source: "played",
+        },
+      });
+
+      rememberSong({
+        video_id: currentRoom.current_video_id,
+        title: currentRoom.current_title || "Untitled",
+      });
+    }
+
+    rememberSong({
+      video_id: nextSong.video_id,
+      title: nextSong.title || "Untitled",
+    });
+
+    setPlayerVideoId(nextSong.video_id);
+    playerVideoIdRef.current = nextSong.video_id;
+
+    await updateRoomPlaybackState({
+      current_video_id: nextSong.video_id,
+      current_title: nextSong.title || "Untitled",
+      is_playing: true,
+      playback_time: 0,
+      last_sync_at: new Date().toISOString(),
+      host_session_id: sessionId,
+      ...(authUserId ? { host_user_id: authUserId } : {}),
+    });
+
+    if (shouldRemoveFromQueue && nextSong.id) {
+      const { error: deleteError } = await supabase
+        .from("room_queue")
+        .delete()
+        .eq("id", nextSong.id);
+
+      if (deleteError) {
+        console.error("playNextSong delete queue item error:", deleteError);
+      }
+
+      await refreshQueueNow();
+    }
+
+    setTimeout(() => {
+      try {
+        playerRef.current?.playVideo?.();
+      } catch (err) {
+        console.error("playNextSong playVideo error:", err);
+      }
+    }, 800);
+  } catch (err) {
+    console.error("playNextSong error:", err);
+  } finally {
+    advancingRef.current = false;
+  }
+}, [
+  authUserId,
+  autoQueueEnabled,
+  autoQueueVibe,
+  isHost,
+  refreshQueueNow,
+  rememberSong,
+  sessionId,
+  updateRoomPlaybackState,
+]);
 const advanceToNextTrack = useCallback(async () => {
-  if (!isHost || advancingRef.current) return;
-
-  const currentQueue = [...(queueRef.current || [])].sort((a, b) => {
-    return (a.position || 0) - (b.position || 0);
-  });
-
-  if (currentQueue.length === 0) {
-    alert("No songs in the queue.");
-    return;
-  }
-
-  const currentVideoId =
-    roomRef.current?.current_video_id || playerVideoIdRef.current || "";
-
-  const currentIndex = currentQueue.findIndex(
-    (item) => item.video_id === currentVideoId
-  );
-
-  const nextIndex = currentIndex === -1 ? 0 : currentIndex + 1;
-
-  if (nextIndex >= currentQueue.length) {
-    alert("You are at the last song.");
-    return;
-  }
-
-  currentQueueIndexRef.current = nextIndex;
-  setCurrentQueueIndex(nextIndex);
-
-  await playQueueItemNow(currentQueue[nextIndex]);
-}, [isHost, playQueueItemNow]);
+  await playNextSong();
+}, [playNextSong]); 
 
   const removeQueueItem = useCallback(
     async (itemId) => {
@@ -1353,7 +1484,7 @@ const handlePlayerError = useCallback((event) => {
     ...(authUserId ? { host_user_id: authUserId } : {}),
   });
         } else if (ytState === 0) {
-  return;
+  await playNextSong();
 }
       } catch (err) {
         console.error("handlePlayerStateChange error:", err);
@@ -1363,6 +1494,7 @@ const handlePlayerError = useCallback((event) => {
   authUserId,
   getPlayerTime,
   isHost,
+  playNextSong,
   reconcileGuestToHost,
   sessionId,
   updateRoomPlaybackState,
@@ -1395,6 +1527,10 @@ const handleHostPlay = useCallback(async () => {
 
   if (!roomRef.current?.current_video_id && currentQueue.length > 0) {
     await playQueueItemNow(currentQueue[0]);
+    if (!roomRef.current?.current_video_id && currentQueue.length === 0 && autoQueueEnabled) {
+  await playNextSong();
+  return;
+}
 
     setTimeout(() => {
       try {
@@ -1426,6 +1562,8 @@ const handleHostPlay = useCallback(async () => {
   }
 }, [
   authUserId,
+  autoQueueEnabled,
+playNextSong,
   getPlayerTime,
   isHost,
   playQueueItemNow,
@@ -1819,8 +1957,9 @@ style={{
     <button
       style={{
         ...styles.secondaryButton,
-        ...(!isHost || queue.length === 0 ? styles.disabledButton : {}),
-      }}
+...(!isHost || (!playerVideoId && queue.length === 0 && !autoQueueEnabled)
+  ? styles.disabledButton
+  : {}),      }}
       onClick={advanceToNextTrack}
       disabled={!isHost || queue.length === 0}
     >
@@ -1928,8 +2067,7 @@ style={{
       ...(!isHost || queue.length === 0 ? styles.disabledButton : {}),
     }}
     onClick={clearQueue}
-    disabled={!isHost || queue.length === 0}
-  >
+disabled={!isHost || (!playerVideoId && queue.length === 0 && !autoQueueEnabled)}  >
     Clear Queue
   </button>
 </div>
