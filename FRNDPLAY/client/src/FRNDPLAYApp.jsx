@@ -59,9 +59,9 @@ const [loading, setLoading] = useState(true);
   };
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    window.location.assign("/");
-  };
+  await supabase.auth.signOut();
+  window.location.assign("/app");
+};
 
   if (loading) {
     return (

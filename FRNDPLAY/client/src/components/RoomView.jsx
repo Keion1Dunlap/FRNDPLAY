@@ -307,7 +307,7 @@ const endRoom = async () => {
 posthog.capture("room_ended", {
   room_code: roomCode,
 });
-    window.location.assign("/");
+    window.location.assign("/app");
   } catch (err) {
     console.error("endRoom error:", err);
     alert("Failed to end room.");
@@ -520,7 +520,7 @@ useEffect(() => {
     }
   }, []);
 const leaveRoom = () => {
-  window.location.assign("/");
+window.location.assign("/app");
 };
 const toggleSafeMode = async () => {
   if (!isHost || !room?.id) return;
@@ -645,7 +645,7 @@ const checkRoomEnded = useCallback(async () => {
   }
 
   if (data?.ended) {
-    window.location.assign("/");
+window.location.assign("/app");
   }
 }, [roomCode]);
 
@@ -1668,7 +1668,7 @@ useEffect(() => {
 if (!nextRoom) return;
 
 if (nextRoom.ended) {
-  window.location.assign("/");
+window.location.assign("/app");
   return;
 }
 
