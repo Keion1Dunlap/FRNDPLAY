@@ -7,8 +7,6 @@ import { usePostHog } from "posthog-js/react";
 import YouTube from "react-youtube";
 import {
   savePlayedSong,
-  getNextQueueSong,
-  removeQueueSong,
   generateSongFromHistory,
 } from "../lib/playbackHelpers";
 const responsiveCss = `
@@ -26,6 +24,13 @@ body,
 
 iframe {
   max-width: 100% !important;
+  border-radius: 18px;
+}
+
+.queue-title,
+.now-playing-title,
+.search-result-title {
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 900px) {
@@ -37,8 +42,8 @@ iframe {
   }
 
   .room-layout {
-  display: grid !important;
-  grid-template-columns: 1fr !important;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
     width: 100% !important;
     max-width: 100% !important;
     gap: 16px !important;
@@ -86,6 +91,11 @@ iframe {
     max-height: 180px !important;
   }
 
+  .player-card iframe {
+    width: 100% !important;
+    height: 220px !important;
+  }
+
   .controls-card > div {
     display: grid !important;
     grid-template-columns: 1fr 1fr !important;
@@ -94,12 +104,9 @@ iframe {
 
   .controls-card button {
     width: 100% !important;
+    min-height: 44px !important;
     padding: 11px 8px !important;
-    font-size: 0.9rem !important;
-  }
-
-  .add-card > div:last-child {
-    flex-direction: column !important;
+    font-size: 0.88rem !important;
   }
 
   .add-card input,
@@ -107,143 +114,69 @@ iframe {
     width: 100% !important;
   }
 
-
-    await savePlayedSong({
-      roomId,
-      song: songToPlay,
-    });
-
-    await removeQueueSong(nextQueueSong.id);
-
-    if (typeof handlePlay === "function") {
-      handlePlay(nextQueueSong.video_id);
-    }
-
-    return;
-  }
-
-  // 2. If queue is empty, only auto-generate if Auto Queue is enabled
-  if (!autoQueueEnabled) {
-    console.log("Queue empty and Auto Queue is off.");
-    return;
-  }
-
-  const generatedSong = await generateSongFromHistory({
-    roomId,
-    vibe: autoQueueVibe || "rap",
-  });
-
-  if (!generatedSong?.video_id) {
-    console.log("No auto-generated song found.");
-    return;
-  }
-
-  await savePlayedSong({
-    roomId,
-    song: generatedSong,
-  });
-
-  if (typeof handlePlay === "function") {
-    handlePlay(generatedSong.video_id);
-  }
-}
-  .player-card iframe {
-    width: 100% !important;
-    height: 220px !important;
-  }
-
-  .queue-panel {
-    margin: 0 !important;
-  }
-
   .queue-header {
     font-size: 1.6rem !important;
     margin-bottom: 0 !important;
   }
-
   .queue-item {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
     width: 100% !important;
     padding: 12px !important;
+    overflow: hidden !important;
+  }
+
+  .queue-item-top {
+    display: grid !important;
+    grid-template-columns: 86px minmax(0, 1fr) !important;
+    gap: 12px !important;
+    align-items: center !important;
+    width: 100% !important;
+    min-width: 0 !important;
   }
 
   .queue-thumb {
-  width: 86px !important;
-  height: 64px !important;
-  max-height: 64px !important;
-  object-fit: cover !important;
-}
+    width: 86px !important;
+    height: 64px !important;
+    max-height: 64px !important;
+    object-fit: cover !important;
+    border-radius: 12px !important;
+  }
+
+  .queue-title {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    line-height: 1.2 !important;
+    font-size: 0.95rem !important;
+  }
 
   .queue-actions {
-    padding-left: 0 !important;
     display: grid !important;
     grid-template-columns: 1fr 1fr !important;
     gap: 8px !important;
     width: 100% !important;
+    padding-left: 0 !important;
   }
 
   .queue-actions button {
     width: 100% !important;
     min-width: 0 !important;
+    min-height: 42px !important;
     padding: 10px 8px !important;
-    font-size: 0.9rem !important;
+    font-size: 0.84rem !important;
+    border-radius: 12px !important;
   }
-}
-  .queue-item {
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 12px !important;
-  width: 100% !important;
-  padding: 12px !important;
-  overflow: hidden !important;
-}
 
-.queue-item-top {
-  display: grid !important;
-  grid-template-columns: 86px minmax(0, 1fr) !important;
-  gap: 12px !important;
-  align-items: center !important;
-  width: 100% !important;
-  min-width: 0 !important;
-}
-
-.queue-thumb {
-  width: 86px !important;
-  height: 64px !important;
-  max-height: 64px !important;
-  object-fit: cover !important;
-  border-radius: 12px !important;
-}
-
-.queue-title {
-  width: 100% !important;
-  max-width: 100% !important;
-  min-width: 0 !important;
-  overflow: hidden !important;
-  text-overflow: ellipsis !important;
-  display: -webkit-box !important;
-  -webkit-line-clamp: 2 !important;
-  -webkit-box-orient: vertical !important;
-  line-height: 1.2 !important;
-  font-size: 0.95rem !important;
-}
-
-.queue-actions {
-  display: grid !important;
-  grid-template-columns: 1fr 1fr !important;
-  gap: 8px !important;
-  width: 100% !important;
-}
-
-.queue-actions button {
-  width: 100% !important;
-  min-height: 42px !important;
-  padding: 10px 8px !important;
-  font-size: 0.85rem !important;
-  border-radius: 12px !important;
-}
-
-.queue-actions button:nth-last-child(-n + 2) {
-  min-height: 42px !important;
+  .search-result-item {
+    grid-template-columns: 72px minmax(0, 1fr) !important;
+  }
 }
 `;
 const SYNC_PUSH_INTERVAL_MS = 1000;
@@ -329,7 +262,40 @@ function normalizeQueuePositions(items) {
     position: index + 1,
   }));
 }
+function buildAutoQueueQuery({ currentTitle, songMemory = [] }) {
+  const cleanTitle = (title) =>
+    String(title || "")
+      .replace(/\(official.*?\)/gi, "")
+      .replace(/\[official.*?\]/gi, "")
+      .replace(/\bHD\b/gi, "")
+      .replace(/\blyrics?\b/gi, "")
+      .replace(/\bvideo\b/gi, "")
+      .replace(/\baudio\b/gi, "")
+      .replace(/\s+/g, " ")
+      .trim();
 
+  const playedTitles = songMemory
+    .map((song) => cleanTitle(song?.title))
+    .filter(Boolean)
+    .slice(-3);
+
+  const baseTitle = cleanTitle(currentTitle);
+
+  const seeds = [...playedTitles, baseTitle]
+    .filter(Boolean)
+    .filter((title, index, arr) => arr.indexOf(title) === index)
+    .slice(-3);
+
+  if (seeds.length === 0) {
+    return "popular party songs";
+  }
+
+  if (seeds.length === 1) {
+    return `songs similar to ${seeds[0]}`;
+  }
+
+  return `songs similar to ${seeds.join(" and ")}`;
+}
 export default function RoomView({ displayName = "" }) {
   const posthog = usePostHog();
   const roomCode = useMemo(() => {
@@ -417,6 +383,7 @@ const [memberCount, setMemberCount] = useState(1);
   const queueRef = useRef([]);
   const playerVideoIdRef = useRef("");
   const playerReadyRef = useRef(false);
+  const pendingMobilePlayRef = useRef("");
   const suppressPauseUntilRef = useRef(0);
 const songMemoryRef = useRef([]);
 const songMemoryIndexRef = useRef(-1);
@@ -430,24 +397,49 @@ const currentQueueIndexRef = useRef(-1);
       room.host_session_id === sessionId
     );
   }, [room, authUserId, sessionId]);
+    const currentVideoId = room?.current_video_id || "";
+  const currentTitle = room?.current_title || "Nothing playing";
+  const currentThumbnail = getYouTubeThumb(currentVideoId);
+  const hostPlayerVideoId =
+  playerVideoId || (isHost && queue.length > 0 ? queue[0]?.video_id : "");
   useEffect(() => {
   if (!isHost) return;
   if (!autoQueueEnabled) return;
   if (isAutoQueuing) return;
   if (queue.length >= 2) return;
   autoFillQueue();
-}, [isHost, autoQueueEnabled, autoQueueVibe, queue.length]);
-
-async function autoFillQueue() {
+}, [isHost, autoQueueEnabled, queue.length, currentTitle]);async function autoFillQueue() {
   if (!isHost || !room?.id || isAutoQueuing) return;
+
   setIsAutoQueuing(true);
+
   try {
-    const results = await searchYouTubeSongs(`${autoQueueVibe} music popular songs`, 8);
+    const currentRoom = roomRef.current;
+
+    const recommendationQuery = buildAutoQueueQuery({
+      currentTitle: currentRoom?.current_title || "",
+      songMemory: songMemoryRef.current || [],
+    });
+
+    const results = await searchYouTubeSongs(recommendationQuery, 8);
+
     if (!results.length) return;
-    const existingIds = new Set(queue.map((q) => q.video_id));
-    const toAdd = results.filter((s) => s?.video_id && !existingIds.has(s.video_id)).slice(0, 3);
+
+    const existingIds = new Set([
+      ...queue.map((q) => q.video_id),
+      currentRoom?.current_video_id,
+      ...(songMemoryRef.current || []).map((song) => song.video_id),
+    ]);
+
+    const toAdd = results
+      .filter((song) => song?.video_id && !existingIds.has(song.video_id))
+      .slice(0, 3);
+
     if (!toAdd.length) return;
-    const startPos = Math.max(0, ...queue.map((q) => q.position || 0)) + 1;
+
+    const startPos =
+      Math.max(0, ...queue.map((q) => Number(q.position || 0))) + 1;
+
     const rows = toAdd.map((song, i) => ({
       room_id: room.id,
       video_id: song.video_id,
@@ -458,8 +450,10 @@ async function autoFillQueue() {
       votes: 0,
       source: "auto_queue",
     }));
+
     const { error } = await supabase.from("room_queue").insert(rows);
     if (error) throw error;
+
     await refreshQueueNow();
   } catch (err) {
     console.error("autoFillQueue error:", err);
@@ -479,10 +473,6 @@ async function updateAutoQueueVibe(vibe) {
   setAutoQueueVibe(vibe);
   await supabase.from("rooms").update({ auto_queue_vibe: vibe }).eq("id", room.id);
 }
-
-  const currentVideoId = room?.current_video_id || "";
-  const currentTitle = room?.current_title || "Nothing playing";
-  const currentThumbnail = getYouTubeThumb(currentVideoId);
 
   const youtubeOpts = useMemo(
     () => ({
@@ -732,6 +722,8 @@ window.location.assign("/app");
       setRoom(data);
 roomRef.current = data;
 setPlayerVideoId(data.current_video_id || "");
+setAutoQueueEnabled(Boolean(data.auto_queue_enabled));
+setAutoQueueVibe(data.auto_queue_vibe || "rap");
 
 posthog.capture("room_joined", {
   room_code: roomCode,
@@ -939,6 +931,47 @@ const rememberSong = useCallback((song) => {
   return nextIndex;
 }, []);
 
+const startHostVideoNow = useCallback((videoId) => {
+  if (!videoId) return;
+
+  pendingMobilePlayRef.current = videoId;
+  suppressPauseUntilRef.current = Date.now() + 5000;
+
+  const player = playerRef.current;
+
+  if (!player) {
+    console.log("Player not ready yet. Pending mobile play saved:", videoId);
+    return;
+  }
+
+  try {
+    player.loadVideoById({
+      videoId,
+      startSeconds: 0,
+    });
+
+    player.playVideo?.();
+
+    window.setTimeout(() => {
+      try {
+        playerRef.current?.playVideo?.();
+      } catch (err) {
+        console.error("startHostVideoNow retry error:", err);
+      }
+    }, 250);
+
+    window.setTimeout(() => {
+      try {
+        playerRef.current?.playVideo?.();
+      } catch (err) {
+        console.error("startHostVideoNow second retry error:", err);
+      }
+    }, 900);
+  } catch (err) {
+    console.error("startHostVideoNow error:", err);
+  }
+}, []);
+
 const playQueueItemNow = useCallback(
   async (item) => {
     if (!isHost || !item || advancingRef.current) return;
@@ -970,9 +1003,12 @@ const playQueueItemNow = useCallback(
       });
 
       setPlayerVideoId(item.video_id);
-      playerVideoIdRef.current = item.video_id;
+playerVideoIdRef.current = item.video_id;
 
-      await updateRoomPlaybackState({
+// Important: start playback immediately inside the user tap event
+startHostVideoNow(item.video_id);
+
+await updateRoomPlaybackState({
   current_video_id: item.video_id,
   current_title: item.title || "Untitled",
   is_playing: true,
@@ -982,13 +1018,6 @@ const playQueueItemNow = useCallback(
   ...(authUserId ? { host_user_id: authUserId } : {}),
 });
 
-setTimeout(() => {
-  try {
-    playerRef.current?.playVideo?.();
-  } catch (err) {
-    console.error("playQueueItemNow playVideo error:", err);
-  }
-}, 800);
 
     } catch (err) {
       console.error("playQueueItemNow error:", err);
@@ -1004,6 +1033,7 @@ setTimeout(() => {
     refreshQueueNow,
     rememberSong,
     sessionId,
+    startHostVideoNow,
     updateRoomPlaybackState,
   ]
 );
@@ -1028,19 +1058,30 @@ const playNextSong = useCallback(async () => {
       nextSong = currentQueue[0];
       shouldRemoveFromQueue = true;
     } else if (autoQueueEnabled) {
-      const generatedSong = await generateSongFromHistory({
-        roomId: currentRoom.id,
-        vibe: autoQueueVibe || "rap",
-      });
+  const recommendationQuery = buildAutoQueueQuery({
+    currentTitle: currentRoom?.current_title || "",
+    songMemory: songMemoryRef.current || [],
+  });
 
-      if (generatedSong?.video_id) {
-        nextSong = {
-          video_id: generatedSong.video_id,
-          title: generatedSong.title || "Untitled",
-          source: "auto_queue",
-        };
-      }
-    }
+  const results = await searchYouTubeSongs(recommendationQuery, 8);
+
+  const existingIds = new Set([
+    currentRoom?.current_video_id,
+    ...(songMemoryRef.current || []).map((song) => song.video_id),
+  ]);
+
+  const generatedSong = results.find(
+    (song) => song?.video_id && !existingIds.has(song.video_id)
+  );
+
+  if (generatedSong?.video_id) {
+    nextSong = {
+      video_id: generatedSong.video_id,
+      title: generatedSong.title || "Untitled",
+      source: "auto_queue",
+    };
+  }
+}
 
     if (!nextSong?.video_id) {
       await updateRoomPlaybackState({
@@ -1114,7 +1155,6 @@ const playNextSong = useCallback(async () => {
 }, [
   authUserId,
   autoQueueEnabled,
-  autoQueueVibe,
   isHost,
   refreshQueueNow,
   rememberSong,
@@ -1364,14 +1404,23 @@ const handlePlayerReady = useCallback(
 
       playerRef.current.seekTo?.(targetTime, true);
 
-      if (latestRoom.is_playing) {
+      const pendingVideoId = pendingMobilePlayRef.current;
+
+      if (pendingVideoId && pendingVideoId === latestRoom.current_video_id) {
+        suppressPauseUntilRef.current = Date.now() + 3500;
+        playerRef.current.loadVideoById?.({ videoId: pendingVideoId, startSeconds: 0 });
+
+        window.setTimeout(() => {
+          try {
+            playerRef.current?.playVideo?.();
+            pendingMobilePlayRef.current = "";
+          } catch (err) {
+            console.error("handlePlayerReady pending play error:", err);
+          }
+        }, 250);
+      } else if (latestRoom.is_playing) {
         suppressPauseUntilRef.current = Date.now() + 3000;
         playerRef.current.playVideo?.();
-
-        if (isHost) {
-          window.setTimeout(() => {
-          }, 600);
-        }
       } else {
         playerRef.current.pauseVideo?.();
       }
@@ -1524,6 +1573,8 @@ const handlePlayerError = useCallback((event) => {
 
       try {
         if (ytState === 1) {
+          pendingMobilePlayRef.current = "";
+
           await updateRoomPlaybackState({
             is_playing: true,
             playback_time: getPlayerTime(),
@@ -1531,6 +1582,9 @@ const handlePlayerError = useCallback((event) => {
             host_session_id: sessionId,
             ...(authUserId ? { host_user_id: authUserId } : {}),
           });
+        } else if (ytState === 5 && pendingMobilePlayRef.current) {
+          suppressPauseUntilRef.current = Date.now() + 2500;
+          playerRef.current?.playVideo?.();
         } else if (ytState === 2) {
   if (Date.now() < suppressPauseUntilRef.current) return;
 
@@ -1583,25 +1637,19 @@ const handleHostPlay = useCallback(async () => {
 
   const currentQueue = [...(queueRef.current || [])];
 
-  if (!roomRef.current?.current_video_id && currentQueue.length > 0) {
-    await playQueueItemNow(currentQueue[0]);
-    if (!roomRef.current?.current_video_id && currentQueue.length === 0 && autoQueueEnabled) {
-  await playNextSong();
-  return;
-}
+  if (!roomRef.current?.current_video_id) {
+    if (currentQueue.length > 0) {
+      await playQueueItemNow(currentQueue[0]);
+      return;
+    }
 
-    setTimeout(() => {
-      try {
-        playerRef.current?.playVideo?.();
-      } catch (err) {
-        console.error("play after queue item error:", err);
-      }
-    }, 800);
+    if (autoQueueEnabled) {
+      await playNextSong();
+      return;
+    }
 
     return;
   }
-
-  if (!roomRef.current?.current_video_id) return;
 
   try {
     suppressPauseUntilRef.current = Date.now() + 2500;
@@ -1621,9 +1669,9 @@ const handleHostPlay = useCallback(async () => {
 }, [
   authUserId,
   autoQueueEnabled,
-playNextSong,
   getPlayerTime,
   isHost,
+  playNextSong,
   playQueueItemNow,
   sessionId,
   updateRoomPlaybackState,
@@ -1732,6 +1780,8 @@ window.location.assign("/app");
 
 setRoom(nextRoom);
 roomRef.current = nextRoom;
+setAutoQueueEnabled(Boolean(nextRoom.auto_queue_enabled));
+setAutoQueueVibe(nextRoom.auto_queue_vibe || "rap");
 
           const nextVideoId = nextRoom.current_video_id || "";
           if (nextVideoId !== playerVideoIdRef.current) {
@@ -1947,15 +1997,14 @@ style={{
           </div>
 
 <div className="player-card" style={styles.playerCard}>
-  {isHost && playerVideoId ? (
-    <YouTube
-  key={playerVideoId}
-  videoId={playerVideoId}
-  opts={youtubeOpts}
-  onReady={handlePlayerReady}
-  onStateChange={handlePlayerStateChange}
-  onError={handlePlayerError}
-/>
+  {isHost && hostPlayerVideoId ? (
+  <YouTube
+    videoId={hostPlayerVideoId}
+    opts={youtubeOpts}
+    onReady={handlePlayerReady}
+    onStateChange={handlePlayerStateChange}
+    onError={handlePlayerError}
+  />
   ) : isHost ? (
     <div style={styles.emptyPlayer}>
       Add a video to the queue, then press Play on a queue item.
@@ -1988,14 +2037,14 @@ style={{
       style={{
         ...styles.primaryButton,
         opacity:
-          !isHost || (!playerVideoId && queue.length === 0) ? 0.45 : 1,
+          !isHost || (!playerVideoId && queue.length === 0 && !autoQueueEnabled) ? 0.45 : 1,
         cursor:
-          !isHost || (!playerVideoId && queue.length === 0)
+          !isHost || (!playerVideoId && queue.length === 0 && !autoQueueEnabled)
             ? "not-allowed"
             : "pointer",
       }}
       onClick={handleHostPlay}
-      disabled={!isHost || (!playerVideoId && queue.length === 0)}
+      disabled={!isHost || (!playerVideoId && queue.length === 0 && !autoQueueEnabled)}
     >
       Play
     </button>
@@ -2019,7 +2068,7 @@ style={{
   ? styles.disabledButton
   : {}),      }}
       onClick={advanceToNextTrack}
-      disabled={!isHost || queue.length === 0}
+      disabled={!isHost || (!playerVideoId && queue.length === 0 && !autoQueueEnabled)}
     >
       Skip Song
     </button>
@@ -2073,6 +2122,7 @@ style={{
         return (
 <div
   key={videoId || title}
+  className="search-result-item"
   style={styles.searchResultItem}
 >
   <img
@@ -2082,7 +2132,7 @@ style={{
 />
 
 <div style={styles.searchResultMeta}>
-  <div style={styles.searchResultTitle}>
+  <div className="search-result-title" style={styles.searchResultTitle}>
     {title}
   </div>
 
@@ -2109,13 +2159,15 @@ style={{
   <div className="queue-panel" style={styles.queuePanel}>
     <div style={styles.queueHeaderRow}>
    {isHost && (
-  <AutoQueueControls
-    enabled={autoQueueEnabled}
-    vibe={autoQueueVibe}
-    isAutoQueuing={isAutoQueuing}
-    onToggle={updateAutoQueueSetting}
-    onChangeVibe={updateAutoQueueVibe}
+  <label style={styles.autoQueueInline}>
+  <input
+    type="checkbox"
+    checked={autoQueueEnabled}
+    onChange={(e) => updateAutoQueueSetting(e.target.checked)}
   />
+  Auto Queue from played songs
+  {isAutoQueuing ? "..." : ""}
+</label>
 )}   
   <div className="queue-header" style={styles.queueHeader}>Queue ({queue.length})</div>
 
@@ -2231,237 +2283,171 @@ Rank: {index + 1}                        </div>
   );
 }  
 const brand = {
-  bgDark: "#020816",
-  navy: "#031031",
-  blue: "#2563eb",
-  blueSoft: "#dbeafe",
-  card: "rgba(255,255,255,0.96)",
-  textDark: "#111827",
-  textMuted: "#4b5563",
+  bg: "#020204",
+  bg2: "#080711",
+  bg3: "#0b0718",
+  purple: "#8b5cf6",
+  purpleDark: "#7c3aed",
+  purpleSoft: "#ede9fe",
+  purpleTint: "#f5f3ff",
+  borderPurple: "#c4b5fd",
+  card: "rgba(255,255,255,0.97)",
+  text: "#111827",
+  muted: "#6b7280",
 };
+
 const styles = {
-  searchResults: {
-  display: "flex",
-  flexDirection: "column",
-  gap: "12px",
-  marginTop: "16px",
-},
-guestPlayerPreview: {
-  position: "relative",
-  minHeight: "440px",
-  borderRadius: "22px",
-  overflow: "hidden",
-  background: "#111827",
-},
-
-guestPlayerThumb: {
-  width: "100%",
-  height: "440px",
-  objectFit: "cover",
-  display: "block",
-  filter: "brightness(0.55)",
-},
-
-guestPlayerOverlay: {
-  position: "absolute",
-  inset: 0,
-  display: "flex",
-  flexDirection: "column",
-  justifyContent: "flex-end",
-  padding: "24px",
-  color: "white",
-},
-
-guestPlayerLabel: {
-  fontSize: "0.95rem",
-  fontWeight: 800,
-  opacity: 0.85,
-  marginBottom: "8px",
-},
-
-guestPlayerTitle: {
-  fontSize: "2rem",
-  fontWeight: 900,
-  lineHeight: 1.1,
-},
-
-guestPlayerSub: {
-  marginTop: "10px",
-  fontSize: "1rem",
-  fontWeight: 700,
-  opacity: 0.85,
-},
-
-searchResultItem: {
-  display: "grid",
-  gridTemplateColumns: "96px minmax(0, 1fr) 96px",
+  autoQueueInline: {
+  display: "inline-flex",
   alignItems: "center",
-  gap: "12px",
-  width: "100%",
-  padding: "12px",
-  borderRadius: "16px",
-  background: "#f9fafb",
-  border: "1px solid #e5e7eb",
-},
-
-searchThumb: {
-  width: "96px",
-  height: "54px",
-  borderRadius: "10px",
-  objectFit: "cover",
-  flexShrink: 0,
-},
-
-searchMeta: {
-  flex: 1,
-  minWidth: 0,
-},
-
-searchTitle: {
+  gap: "8px",
   fontWeight: 900,
-color: "#111827",
-  lineHeight: 1.2,
-  wordBreak: "break-word",
-  width: "100%",
-minWidth: 0,
-},
-
-searchChannel: {
-  marginTop: "4px",
-  color: "#6b7280",
-  fontSize: "0.9rem",
-  fontWeight: 600,
-},
-  endRoomButton: {
-  border: "none",
-  borderRadius: "14px",
-  padding: "10px 14px",
-  fontWeight: 900,
-  fontSize: "0.9rem",
-  cursor: "pointer",
-  background: "#dc2626",
-  color: "white",
-},
-  queueHeaderRow: {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  marginBottom: "16px",
-  gap: "10px",
-  flexWrap: "wrap",
-},
-
-queueHeader: {
-  fontSize: "2.2rem",
-  fontWeight: 900,
-  marginBottom: "18px",
-  color: "#111827",
-},
-
-clearQueueButton: {
-  border: "none",
-  borderRadius: "12px",
-  padding: "10px 14px",
-  fontWeight: 800,
-  fontSize: "0.9rem",
-  cursor: "pointer",
-  background: "#fee2e2",
-  color: "#991b1b",
+  color: brand.text,
+  background: brand.purpleTint,
+  border: "1px solid rgba(139,92,246,0.28)",
+  borderRadius: "999px",
+  padding: "9px 12px",
 },
   page: {
-  minHeight: "100vh",
-  width: "100%",
-overflowX: "hidden",
-  background:
-    "radial-gradient(circle at top left, #16357a 0%, #0a1b4d 35%, #031031 70%, #020816 100%)",
-  padding: "30px",
-  boxSizing: "border-box",
-  color: "#0f172a",
-},
+    minHeight: "100vh",
+    width: "100%",
+    overflowX: "hidden",
+    background:
+      "radial-gradient(circle at top center, rgba(139,92,246,0.30) 0%, transparent 34%), linear-gradient(180deg, #080711 0%, #0b0718 45%, #020204 100%)",
+    padding: "30px",
+    boxSizing: "border-box",
+    color: brand.text,
+  },
 
-layout: {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr)",
-  gap: "20px",
-  alignItems: "start",
-  width: "100%",
-  maxWidth: "1100px",
-  margin: "0 auto",
-},
+  layout: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr)",
+    gap: "20px",
+    alignItems: "start",
+    width: "100%",
+    maxWidth: "1100px",
+    margin: "0 auto",
+  },
+
   leftColumn: {
-  display: "flex",
-  flexDirection: "column",
-  gap: "20px",
-},
+    display: "flex",
+    flexDirection: "column",
+    gap: "20px",
+  },
+
   rightColumn: {
-  display: "flex",
-  flexDirection: "column",
-  width: "100%",
-},
+    display: "flex",
+    flexDirection: "column",
+    width: "100%",
+  },
+
   headerBlock: {
     color: "white",
     padding: "8px 2px",
   },
+
   roomTitleRow: {
     display: "flex",
     alignItems: "center",
-    gap: "16px",
+    gap: "14px",
     flexWrap: "wrap",
   },
+
   roomTitle: {
     margin: 0,
     fontSize: "3rem",
-    fontWeight: 900,
+    fontWeight: 950,
     lineHeight: 1,
+    letterSpacing: "-0.04em",
+    color: "#ffffff",
   },
-  copyButton: {
-  border: "none",
-  borderRadius: "14px",
-  padding: "10px 14px",
-  fontWeight: 900,
-  fontSize: "0.9rem",
-  cursor: "pointer",
-  background: "white",
-  color: "#111827",
-},
 
-leaveButton: {
-  border: "none",
-  borderRadius: "14px",
-  padding: "10px 14px",
-  fontWeight: 900,
-  fontSize: "0.9rem",
-  cursor: "pointer",
-  background: "#e5e7eb",
-  color: "#111827",
-},
+  copyButton: {
+    border: "1px solid rgba(255,255,255,0.14)",
+    borderRadius: "999px",
+    padding: "10px 14px",
+    fontWeight: 900,
+    fontSize: "0.9rem",
+    cursor: "pointer",
+    background: "rgba(255,255,255,0.96)",
+    color: brand.text,
+  },
+
+  shareButton: {
+    padding: "11px 15px",
+    borderRadius: "999px",
+    border: "1px solid rgba(139,92,246,0.45)",
+    background: "linear-gradient(135deg, #8b5cf6, #7c3aed)",
+    color: "white",
+    fontWeight: 900,
+    cursor: "pointer",
+    boxShadow: "0 12px 28px rgba(139,92,246,0.34)",
+  },
+
+  leaveButton: {
+    border: "1px solid rgba(255,255,255,0.18)",
+    borderRadius: "999px",
+    padding: "10px 14px",
+    fontWeight: 900,
+    fontSize: "0.9rem",
+    cursor: "pointer",
+    background: "rgba(255,255,255,0.12)",
+    color: "white",
+  },
+
   roleText: {
     margin: "14px 0 6px",
-    fontSize: "1.25rem",
-    fontWeight: 600,
+    fontSize: "1.1rem",
+    fontWeight: 700,
+    color: "rgba(255,255,255,0.94)",
   },
+
   subtleText: {
     margin: 0,
-    opacity: 0.9,
-    fontSize: "1.05rem",
+    opacity: 0.88,
+    fontSize: "1.02rem",
+    color: "rgba(255,255,255,0.82)",
   },
+
+  qrCard: {
+    background: "rgba(255,255,255,0.96)",
+    padding: "14px",
+    borderRadius: "18px",
+    display: "flex",
+    alignItems: "center",
+    gap: "14px",
+    width: "fit-content",
+    border: "1px solid rgba(139,92,246,0.28)",
+    boxShadow: "0 14px 34px rgba(0,0,0,0.22)",
+  },
+
+  qrText: {
+    color: brand.text,
+    fontWeight: 900,
+    fontSize: "0.95rem",
+  },
+
   nowPlayingCard: {
-    background: "rgba(255,255,255,0.97)",
+    background: brand.card,
     borderRadius: "28px",
     padding: "26px",
-    boxShadow: "0 18px 40px rgba(0,0,0,0.2)",
+    boxShadow: "0 24px 70px rgba(0,0,0,0.28)",
+    border: "1px solid rgba(139,92,246,0.18)",
   },
+
   sectionHeading: {
     fontSize: "1.35rem",
-    fontWeight: 900,
+    fontWeight: 950,
     marginBottom: "18px",
-    color: "#111827",
+    color: brand.text,
   },
+
   nowPlayingRow: {
     display: "flex",
     alignItems: "center",
     gap: "18px",
   },
+
   nowPlayingThumb: {
     width: "150px",
     height: "96px",
@@ -2470,196 +2456,319 @@ leaveButton: {
     background: "#e5e7eb",
     flexShrink: 0,
   },
+
   nowPlayingMeta: {
     minWidth: 0,
   },
+
   platformLabel: {
     fontSize: "1rem",
-    color: "#6b7280",
-    fontWeight: 800,
+    color: brand.purpleDark,
+    fontWeight: 900,
     marginBottom: "8px",
   },
+
   nowPlayingTitle: {
     fontSize: "2.3rem",
-    fontWeight: 900,
+    fontWeight: 950,
     lineHeight: 1.02,
-    color: "#111827",
+    color: brand.text,
     wordBreak: "break-word",
   },
+
   elapsedText: {
     marginTop: "12px",
-    color: "#6b7280",
+    color: brand.muted,
     fontSize: "1.05rem",
-    fontWeight: 600,
+    fontWeight: 700,
   },
+
   playerCard: {
-    background: "rgba(255,255,255,0.97)",
+    background: brand.card,
     borderRadius: "28px",
     padding: "18px",
-    boxShadow: "0 18px 40px rgba(0,0,0,0.2)",
+    boxShadow: "0 24px 70px rgba(0,0,0,0.28)",
+    border: "1px solid rgba(139,92,246,0.18)",
     overflow: "hidden",
   },
+
   emptyPlayer: {
     minHeight: "440px",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    color: "#6b7280",
+    color: brand.muted,
     fontSize: "1.05rem",
-    fontWeight: 600,
+    fontWeight: 700,
     textAlign: "center",
     padding: "20px",
   },
+
+  guestPlayerPreview: {
+    position: "relative",
+    minHeight: "440px",
+    borderRadius: "22px",
+    overflow: "hidden",
+    background: "#111827",
+  },
+
+  guestPlayerThumb: {
+    width: "100%",
+    height: "440px",
+    objectFit: "cover",
+    display: "block",
+    filter: "brightness(0.50)",
+  },
+
+  guestPlayerOverlay: {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "flex-end",
+    padding: "24px",
+    color: "white",
+    background: "linear-gradient(180deg, transparent 20%, rgba(2,2,4,0.72) 100%)",
+  },
+
+  guestPlayerLabel: {
+    fontSize: "0.95rem",
+    fontWeight: 900,
+    opacity: 0.88,
+    marginBottom: "8px",
+    color: brand.purpleSoft,
+  },
+
+  guestPlayerTitle: {
+    fontSize: "2rem",
+    fontWeight: 950,
+    lineHeight: 1.1,
+  },
+
+  guestPlayerSub: {
+    marginTop: "10px",
+    fontSize: "1rem",
+    fontWeight: 700,
+    opacity: 0.86,
+  },
+
   controlsCard: {
-    background: "rgba(255,255,255,0.97)",
+    background: brand.card,
     borderRadius: "24px",
     padding: "18px",
-    boxShadow: "0 18px 40px rgba(0,0,0,0.2)",
+    boxShadow: "0 24px 70px rgba(0,0,0,0.25)",
+    border: "1px solid rgba(139,92,246,0.18)",
   },
+
   controlsRow: {
     display: "flex",
     gap: "12px",
     flexWrap: "wrap",
   },
+
   primaryButton: {
-  border: "none",
-  borderRadius: "999px",
-  padding: "13px 20px",
-  fontWeight: 900,
-  fontSize: "1rem",
-  cursor: "pointer",
-  background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
-  color: "white",
-  boxShadow: "0 12px 28px rgba(37,99,235,0.32)",
-},
-  secondaryButton: {
-  border: "1px solid #c7d2fe",
-  borderRadius: "999px",
-  padding: "13px 20px",
-  fontWeight: 900,
-  fontSize: "1rem",
-  cursor: "pointer",
-  background: "#eff6ff",
-  color: "#1d4ed8",
-},
-  addCard: {
-    background: "rgba(255,255,255,0.97)",
-    borderRadius: "24px",
-    padding: "20px",
-    boxShadow: "0 18px 40px rgba(0,0,0,0.2)",
-  },
-  addRow: {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) 180px",
-  gap: "12px",
-  alignItems: "center",
-  width: "100%",
-},
-shareButton: {
-  width: "100%",
-  padding: "12px",
-  borderRadius: "12px",
-  border: "none",
-  background: "#111827",
-  color: "white",
-  fontWeight: 900,
-  cursor: "pointer",
-},
-qrCard: {
-  background: "white",
-  padding: "14px",
-  borderRadius: "18px",
-  display: "flex",
-  alignItems: "center",
-  gap: "14px",
-  width: "fit-content",
-},
-
-qrText: {
-  color: "#111827",
-  fontWeight: 900,
-  fontSize: "0.95rem",
-},
-instructionsCard: {
-  background: "rgba(255,255,255,0.97)",
-  borderRadius: "22px",
-  padding: "18px",
-  boxShadow: "0 18px 40px rgba(0,0,0,0.2)",
-},
-
-instructionsTitle: {
-  color: "#111827",
-  fontSize: "1.15rem",
-  fontWeight: 900,
-  marginBottom: "10px",
-},
-
-instructionsList: {
-  display: "grid",
-  gap: "8px",
-  color: "#4b5563",
-  fontWeight: 700,
-},
-  searchInput: {
-  flex: 1,
-  minWidth: 0,
-  width: "100%",
-  height: "56px",
-  borderRadius: "18px",
-  border: "1px solid #d1d5db",
-  padding: "0 16px",
-  fontSize: "16px",
-  fontWeight: 700,
-  color: "#111827",
-  background: "#ffffff",
-  caretColor: "#111827",
-  WebkitTextFillColor: "#111827",
-  outline: "none",
-},
-  addButton: {
     border: "none",
-    borderRadius: "15px",
+    borderRadius: "999px",
     padding: "13px 20px",
-    fontWeight: 900,
+    fontWeight: 950,
     fontSize: "1rem",
     cursor: "pointer",
-    background: "#111827",
+    background: "linear-gradient(135deg, #8b5cf6, #7c3aed)",
     color: "white",
+    boxShadow: "0 12px 28px rgba(139,92,246,0.35)",
   },
+
+  secondaryButton: {
+    border: "1px solid rgba(139,92,246,0.35)",
+    borderRadius: "999px",
+    padding: "13px 20px",
+    fontWeight: 950,
+    fontSize: "1rem",
+    cursor: "pointer",
+    background: "rgba(139,92,246,0.12)",
+    color: brand.purpleDark,
+  },
+
+  instructionsCard: {
+    background: brand.card,
+    borderRadius: "22px",
+    padding: "18px",
+    boxShadow: "0 24px 70px rgba(0,0,0,0.22)",
+    border: "1px solid rgba(139,92,246,0.16)",
+  },
+
+  instructionsTitle: {
+    color: brand.text,
+    fontSize: "1.15rem",
+    fontWeight: 950,
+    marginBottom: "10px",
+  },
+
+  instructionsList: {
+    display: "grid",
+    gap: "8px",
+    color: "#4b5563",
+    fontWeight: 800,
+  },
+
+  addCard: {
+    background: brand.card,
+    borderRadius: "24px",
+    padding: "20px",
+    boxShadow: "0 24px 70px rgba(0,0,0,0.25)",
+    border: "1px solid rgba(139,92,246,0.18)",
+  },
+
+  addRow: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr)",
+    gap: "12px",
+    alignItems: "center",
+    width: "100%",
+  },
+
+  searchInput: {
+    flex: 1,
+    minWidth: 0,
+    width: "100%",
+    height: "56px",
+    borderRadius: "18px",
+    border: "1px solid rgba(139,92,246,0.25)",
+    padding: "0 16px",
+    fontSize: "16px",
+    fontWeight: 800,
+    color: brand.text,
+    background: "#ffffff",
+    caretColor: brand.purpleDark,
+    WebkitTextFillColor: brand.text,
+    outline: "none",
+    boxShadow: "0 10px 24px rgba(15,23,42,0.06)",
+  },
+
+  searchResults: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+    marginTop: "16px",
+  },
+
+  searchResultItem: {
+    display: "grid",
+    gridTemplateColumns: "96px minmax(0, 1fr) 86px",
+    alignItems: "center",
+    gap: "12px",
+    width: "100%",
+    padding: "12px",
+    borderRadius: "18px",
+    background: "#faf9ff",
+    border: "1px solid rgba(139,92,246,0.18)",
+  },
+
+  searchThumb: {
+    width: "96px",
+    height: "54px",
+    borderRadius: "12px",
+    objectFit: "cover",
+    flexShrink: 0,
+  },
+
+  searchResultMeta: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  searchResultTitle: {
+    fontWeight: 950,
+    color: brand.text,
+    lineHeight: 1.2,
+    width: "100%",
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+  },
+
+  searchResultChannel: {
+    marginTop: "4px",
+    color: brand.muted,
+    fontSize: "0.9rem",
+    fontWeight: 700,
+  },
+
+  addButton: {
+    border: "none",
+    borderRadius: "999px",
+    padding: "12px 16px",
+    fontWeight: 950,
+    fontSize: "0.95rem",
+    cursor: "pointer",
+    background: "linear-gradient(135deg, #8b5cf6, #7c3aed)",
+    color: "white",
+    boxShadow: "0 10px 24px rgba(139,92,246,0.26)",
+  },
+
   queuePanel: {
-  background: "rgba(255,255,255,0.97)",
-  borderRadius: "28px",
-  padding: "22px",
-  boxShadow: "0 24px 70px rgba(0,0,0,0.26)",
-  border: "1px solid rgba(255,255,255,0.35)",
-},
+    background: brand.card,
+    borderRadius: "28px",
+    padding: "22px",
+    boxShadow: "0 24px 70px rgba(0,0,0,0.28)",
+    border: "1px solid rgba(139,92,246,0.18)",
+  },
+
+  queueHeaderRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: "16px",
+    gap: "10px",
+    flexWrap: "wrap",
+  },
+
   queueHeader: {
     fontSize: "2.2rem",
-    fontWeight: 900,
+    fontWeight: 950,
     marginBottom: "18px",
-    color: "#111827",
+    color: brand.text,
+    letterSpacing: "-0.03em",
   },
+
+  clearQueueButton: {
+    border: "1px solid rgba(220,38,38,0.18)",
+    borderRadius: "999px",
+    padding: "10px 14px",
+    fontWeight: 900,
+    fontSize: "0.9rem",
+    cursor: "pointer",
+    background: "#fee2e2",
+    color: "#991b1b",
+  },
+
   emptyQueue: {
-    color: "#6b7280",
+    color: brand.muted,
     padding: "16px 4px",
     fontSize: "1rem",
-    fontWeight: 600,
+    fontWeight: 700,
   },
+
   queueItem: {
-  background: "#f8fafc",
-  border: "1px solid #dbeafe",
-  borderRadius: "22px",
-  padding: "14px",
-  marginBottom: "14px",
-  boxShadow: "0 10px 25px rgba(15,23,42,0.08)",
-},
+    background: "linear-gradient(180deg, #ffffff 0%, #faf9ff 100%)",
+    border: "1px solid rgba(139,92,246,0.20)",
+    borderRadius: "22px",
+    padding: "14px",
+    marginBottom: "14px",
+    boxShadow: "0 12px 26px rgba(15,23,42,0.08)",
+  },
+
   queueItemTop: {
-  display: "grid",
-  gridTemplateColumns: "132px minmax(0, 1fr)",
-  gap: "14px",
-  alignItems: "start",
-  width: "100%",
-},
+    display: "grid",
+    gridTemplateColumns: "132px minmax(0, 1fr)",
+    gap: "14px",
+    alignItems: "start",
+    width: "100%",
+  },
+
   queueThumb: {
     width: "132px",
     height: "76px",
@@ -2668,75 +2777,83 @@ instructionsList: {
     background: "#e5e7eb",
     flexShrink: 0,
   },
+
   queueMeta: {
-  flex: 1,
-  minWidth: 0,
-  overflowWrap: "break-word",
-  wordBreak: "normal",
-},
+    flex: 1,
+    minWidth: 0,
+    overflowWrap: "break-word",
+    wordBreak: "normal",
+  },
+
   queueItemTitle: {
-  fontSize: "1rem",
-    fontWeight: 900,
+    fontSize: "1rem",
+    fontWeight: 950,
     lineHeight: 1.25,
     marginBottom: "7px",
-    color: "#111827",
+    color: brand.text,
     wordBreak: "break-word",
   },
+
   queueSub: {
-    color: "#6b7280",
-    fontSize: "0.98rem",
+    color: brand.muted,
+    fontSize: "0.95rem",
     marginBottom: "4px",
-    fontWeight: 600,
+    fontWeight: 700,
   },
+
   voteText: {
-    color: "#111827",
+    color: brand.text,
     fontSize: "1rem",
-    fontWeight: 900,
+    fontWeight: 950,
     marginTop: "8px",
   },
+
   queueActions: {
-  display: "grid",
-  gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-  gap: "8px",
-  marginTop: "12px",
-  paddingLeft: 0,
-  width: "100%",
-},
+    display: "grid",
+    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+    gap: "8px",
+    marginTop: "12px",
+    paddingLeft: 0,
+    width: "100%",
+  },
+
   queueActionButton: {
-  border: "1px solid #c7d2fe",
-  borderRadius: "14px",
-  padding: "10px 12px",
-  fontWeight: 900,
-  fontSize: "0.9rem",
-  cursor: "pointer",
-  background: "#eff6ff",
-  color: "#1d4ed8",
-},
+    border: "1px solid rgba(139,92,246,0.35)",
+    borderRadius: "14px",
+    padding: "10px 12px",
+    fontWeight: 950,
+    fontSize: "0.9rem",
+    cursor: "pointer",
+    background: "rgba(139,92,246,0.12)",
+    color: brand.purpleDark,
+  },
+
   iconButton: {
-  border: "1px solid #c7d2fe",
-  borderRadius: "14px",
-  padding: "10px 12px",
-  fontWeight: 900,
-  fontSize: "0.95rem",
-  cursor: "pointer",
-  background: "#dbeafe",
-  color: "#1d4ed8",
-},
+    border: "1px solid rgba(139,92,246,0.35)",
+    borderRadius: "14px",
+    padding: "10px 12px",
+    fontWeight: 950,
+    fontSize: "0.95rem",
+    cursor: "pointer",
+    background: "rgba(139,92,246,0.18)",
+    color: brand.purpleDark,
+  },
+
   disabledButton: {
     opacity: 0.45,
     cursor: "not-allowed",
   },
+
   statusCard: {
-    background: "white",
+    background: brand.card,
     borderRadius: "22px",
     padding: "26px",
-    boxShadow: "0 18px 40px rgba(0,0,0,0.2)",
+    boxShadow: "0 24px 70px rgba(0,0,0,0.28)",
     maxWidth: "540px",
+    border: "1px solid rgba(139,92,246,0.18)",
   },
 
-
-// 🔥 ADD THIS RIGHT HERE
-mobileNotice: {
-  display: "none",
-},
+  mobileNotice: {
+    display: "none",
+  },
 };
