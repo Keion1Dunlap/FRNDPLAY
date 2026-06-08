@@ -119,60 +119,60 @@ iframe {
     margin-bottom: 0 !important;
   }
   .queue-item {
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 12px !important;
-    width: 100% !important;
-    padding: 12px !important;
-    overflow: hidden !important;
-  }
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+  width: 100% !important;
+  padding: 12px !important;
+  overflow: hidden !important;
+}
 
-  .queue-item-top {
-    display: grid !important;
-    grid-template-columns: 86px minmax(0, 1fr) !important;
-    gap: 12px !important;
-    align-items: center !important;
-    width: 100% !important;
-    min-width: 0 !important;
-  }
+.queue-item-top {
+  display: grid !important;
+  grid-template-columns: 82px minmax(0, 1fr) !important;
+  gap: 12px !important;
+  align-items: center !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
 
-  .queue-thumb {
-    width: 86px !important;
-    height: 64px !important;
-    max-height: 64px !important;
-    object-fit: cover !important;
-    border-radius: 12px !important;
-  }
+.queue-thumb {
+  width: 82px !important;
+  height: 62px !important;
+  max-height: 62px !important;
+  object-fit: cover !important;
+  border-radius: 12px !important;
+}
 
-  .queue-title {
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    display: -webkit-box !important;
-    -webkit-line-clamp: 2 !important;
-    -webkit-box-orient: vertical !important;
-    line-height: 1.2 !important;
-    font-size: 0.95rem !important;
-  }
+.queue-title {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+  line-height: 1.2 !important;
+  font-size: 0.95rem !important;
+}
 
-  .queue-actions {
-    display: grid !important;
-    grid-template-columns: 1fr 1fr !important;
-    gap: 8px !important;
-    width: 100% !important;
-    padding-left: 0 !important;
-  }
+.queue-actions {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 8px !important;
+  width: 100% !important;
+  padding-left: 0 !important;
+}
 
-  .queue-actions button {
-    width: 100% !important;
-    min-width: 0 !important;
-    min-height: 42px !important;
-    padding: 10px 8px !important;
-    font-size: 0.84rem !important;
-    border-radius: 12px !important;
-  }
+.queue-actions button {
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: 42px !important;
+  padding: 10px 8px !important;
+  font-size: 0.84rem !important;
+  border-radius: 12px !important;
+}
 
   .search-result-item {
     grid-template-columns: 72px minmax(0, 1fr) !important;
@@ -263,6 +263,35 @@ function normalizeQueuePositions(items) {
   }));
 }
 function buildAutoQueueQuery({ currentTitle, songMemory = [] }) {
+  function isBadAutoQueueResult(song) {
+  const title = String(song?.title || "").toLowerCase();
+
+  const blockedTerms = [
+    "mix",
+    "dj mix",
+    "remix club",
+    "playlist",
+    "top songs",
+    "best songs",
+    "mashup",
+    "megamix",
+    "compilation",
+    "full album",
+    "album mix",
+    "hour",
+    "1 hour",
+    "2 hour",
+    "nonstop",
+    "live set",
+    "radio edit",
+    "clean mix",
+    "party mix",
+    "dance mix",
+    "club mix",
+  ];
+
+  return blockedTerms.some((term) => title.includes(term));
+}
   const cleanTitle = (title) =>
     String(title || "")
       .replace(/\(official.*?\)/gi, "")
@@ -432,8 +461,13 @@ const currentQueueIndexRef = useRef(-1);
     ]);
 
     const toAdd = results
-      .filter((song) => song?.video_id && !existingIds.has(song.video_id))
-      .slice(0, 3);
+  .filter(
+    (song) =>
+      song?.video_id &&
+      !existingIds.has(song.video_id) &&
+      !isBadAutoQueueResult(song)
+  )
+  .slice(0, 3);
 
     if (!toAdd.length) return;
 
@@ -1071,8 +1105,11 @@ const playNextSong = useCallback(async () => {
   ]);
 
   const generatedSong = results.find(
-    (song) => song?.video_id && !existingIds.has(song.video_id)
-  );
+  (song) =>
+    song?.video_id &&
+    !existingIds.has(song.video_id) &&
+    !isBadAutoQueueResult(song)
+);
 
   if (generatedSong?.video_id) {
     nextSong = {
@@ -2165,7 +2202,7 @@ style={{
     checked={autoQueueEnabled}
     onChange={(e) => updateAutoQueueSetting(e.target.checked)}
   />
-  Auto Queue from played songs
+  Auto Queue
   {isAutoQueuing ? "..." : ""}
 </label>
 )}   
@@ -2752,38 +2789,39 @@ const styles = {
     fontWeight: 700,
   },
 
-  queueItem: {
-    background: "linear-gradient(180deg, #ffffff 0%, #faf9ff 100%)",
-    border: "1px solid rgba(139,92,246,0.20)",
-    borderRadius: "22px",
-    padding: "14px",
-    marginBottom: "14px",
-    boxShadow: "0 12px 26px rgba(15,23,42,0.08)",
-  },
+queueItem: {
+  background: "#fbfaff",
+  border: "1px solid rgba(139,92,246,0.22)",
+  borderRadius: "22px",
+  padding: "14px",
+  marginBottom: "14px",
+  boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
+  display: "flex",
+  flexDirection: "column",
+  gap: "14px",
+},
 
-  queueItemTop: {
-    display: "grid",
-    gridTemplateColumns: "132px minmax(0, 1fr)",
-    gap: "14px",
-    alignItems: "start",
-    width: "100%",
-  },
+queueItemTop: {
+  display: "grid",
+  gridTemplateColumns: "96px minmax(0, 1fr)",
+  gap: "14px",
+  alignItems: "center",
+  width: "100%",
+},
 
-  queueThumb: {
-    width: "132px",
-    height: "76px",
-    objectFit: "cover",
-    borderRadius: "14px",
-    background: "#e5e7eb",
-    flexShrink: 0,
-  },
+queueThumb: {
+  width: "96px",
+  height: "72px",
+  objectFit: "cover",
+  borderRadius: "14px",
+  background: "#111827",
+  flexShrink: 0,
+},
 
-  queueMeta: {
-    flex: 1,
-    minWidth: 0,
-    overflowWrap: "break-word",
-    wordBreak: "normal",
-  },
+queueMeta: {
+  minWidth: 0,
+  width: "100%",
+},
 
   queueItemTitle: {
     fontSize: "1rem",
@@ -2809,13 +2847,11 @@ const styles = {
   },
 
   queueActions: {
-    display: "grid",
-    gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-    gap: "8px",
-    marginTop: "12px",
-    paddingLeft: 0,
-    width: "100%",
-  },
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: "8px",
+  width: "100%",
+},
 
   queueActionButton: {
     border: "1px solid rgba(139,92,246,0.35)",
