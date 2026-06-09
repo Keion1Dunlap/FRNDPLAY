@@ -1,6 +1,6 @@
 const YOUTUBE_API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY;
 
-export async function searchYouTubeSongs(query, maxResults = 6) {
+export async function searchYouTubeSongs(query, maxResults = 10) {
   const cleanQuery = query?.trim();
 
   if (!cleanQuery) {
@@ -17,7 +17,9 @@ export async function searchYouTubeSongs(query, maxResults = 6) {
 
     url.searchParams.set("part", "snippet");
     url.searchParams.set("type", "video");
-    url.searchParams.set("maxResults", String(maxResults));
+    url.searchParams.set("videoCategoryId", "10");
+    url.searchParams.set("videoEmbeddable", "true");
+    url.searchParams.set("maxResults", String(maxResults || 10));
     url.searchParams.set("q", cleanQuery);
     url.searchParams.set("key", YOUTUBE_API_KEY);
 
