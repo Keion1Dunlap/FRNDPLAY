@@ -286,14 +286,17 @@ function normalizeSongTitle(title = "") {
 }
 function isBadAutoQueueResult(song) {
   const title = String(song?.title || "").toLowerCase();
+  const channel = String(song?.channel_title || song?.channelTitle || "").toLowerCase();
 
   const blockedTerms = [
     "mix",
     "dj mix",
-    "remix club",
     "playlist",
     "top songs",
     "best songs",
+    "party songs",
+    "dance songs",
+    "songs that make you dance",
     "mashup",
     "megamix",
     "compilation",
@@ -313,9 +316,27 @@ function isBadAutoQueueResult(song) {
     "reverb",
     "nightcore",
     "sped up",
+    "lyrics",
+    "lyric video",
+    "official lyric",
+    "visualizer",
+    "2024",
+    "2025",
+    "2026",
   ];
 
-  return blockedTerms.some((term) => title.includes(term));
+  const blockedChannels = [
+    "mix",
+    "playlist",
+    "hits",
+    "party",
+    "top songs",
+  ];
+
+  if (blockedTerms.some((term) => title.includes(term))) return true;
+  if (blockedChannels.some((term) => channel.includes(term))) return true;
+
+  return false;
 }
 
 function buildAutoQueueQuery({ currentTitle, songMemory = [] }) {
@@ -323,34 +344,33 @@ function buildAutoQueueQuery({ currentTitle, songMemory = [] }) {
     String(title || "")
       .replace(/\(official.*?\)/gi, "")
       .replace(/\[official.*?\]/gi, "")
-      .replace(/\bHD\b/gi, "")
       .replace(/\blyrics?\b/gi, "")
       .replace(/\bvideo\b/gi, "")
       .replace(/\baudio\b/gi, "")
+      .replace(/\bvisualizer\b/gi, "")
+      .replace(/\bremastered\b/gi, "")
+      .replace(/\bexplicit\b/gi, "")
+      .replace(/\bclean\b/gi, "")
       .replace(/\s+/g, " ")
       .trim();
 
-  const playedTitles = songMemory
+  const memoryTitles = (songMemory || [])
     .map((song) => cleanTitle(song?.title))
-    .filter(Boolean)
-    .slice(-3);
+    .filter(Boolean);
 
   const baseTitle = cleanTitle(currentTitle);
 
-  const seeds = [...playedTitles, baseTitle]
+  const seeds = [...memoryTitles, baseTitle]
     .filter(Boolean)
-    .filter((title, index, arr) => arr.indexOf(title) === index)
-    .slice(-3);
+    .filter((title, index, arr) => arr.indexOf(title) === index);
 
   if (seeds.length === 0) {
-    return "popular party songs";
+    return "";
   }
 
-  if (seeds.length === 1) {
-    return `songs similar to ${seeds[0]}`;
-  }
+  const latestSeed = seeds[seeds.length - 1];
 
-  return `songs similar to ${seeds.join(" and ")}`;
+  return `${latestSeed} similar artist song`;
 }
 export default function RoomView({ displayName = "" }) {
   const posthog = usePostHog();
@@ -473,9 +493,16 @@ if (!isHost || !roomRef.current?.id || isAutoQueuing) return;
     const currentRoom = roomRef.current;
 
     const recommendationQuery = buildAutoQueueQuery({
-      currentTitle: currentRoom?.current_title || "",
-      songMemory: songMemoryRef.current || [],
-    });
+  currentTitle: currentRoom?.current_title || "",
+  songMemory: songMemoryRef.current || [],
+});
+
+if (!recommendationQuery) {
+  console.warn("Auto Queue skipped: no song history yet.");
+  return;
+}
+
+const results = await searchYouTubeSongs(recommendationQuery, 8);
 
     const results = await searchYouTubeSongs(recommendationQuery, 8);
 
