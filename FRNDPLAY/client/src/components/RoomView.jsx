@@ -263,6 +263,27 @@ function normalizeQueuePositions(items) {
     position: index + 1,
   }));
 }
+function normalizeSongTitle(title = "") {
+  return String(title || "")
+    .toLowerCase()
+    .replace(/\(.*?\)/g, "")
+    .replace(/\[.*?\]/g, "")
+    .replace(/\bofficial\b/g, "")
+    .replace(/\bmusic\b/g, "")
+    .replace(/\bvideo\b/g, "")
+    .replace(/\blyric\b/g, "")
+    .replace(/\blyrics\b/g, "")
+    .replace(/\baudio\b/g, "")
+    .replace(/\bvisualizer\b/g, "")
+    .replace(/\bhd\b/g, "")
+    .replace(/\b4k\b/g, "")
+    .replace(/\bremastered\b/g, "")
+    .replace(/\bexplicit\b/g, "")
+    .replace(/\bclean\b/g, "")
+    .replace(/[^a-z0-9\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 function isBadAutoQueueResult(song) {
   const title = String(song?.title || "").toLowerCase();
 
@@ -466,14 +487,34 @@ if (!isHost || !roomRef.current?.id || isAutoQueuing) return;
       ...(songMemoryRef.current || []).map((song) => song.video_id),
     ]);
 
-    const toAdd = results
-  .filter(
-    (song) =>
-      song?.video_id &&
-      !existingIds.has(song.video_id) &&
-      !isBadAutoQueueResult(song)
-  )
-  .slice(0, 3);
+    const existingTitles = new Set([
+  ...queueRef.current.map((q) => normalizeSongTitle(q.title)),
+  currentRoom?.current_title
+    ? normalizeSongTitle(currentRoom.current_title)
+    : "",
+  ...(songMemoryRef.current || []).map((song) =>
+    normalizeSongTitle(song.title)
+  ),
+].filter(Boolean));
+
+const seenAutoTitles = new Set();
+
+const toAdd = results
+  .filter((song) => {
+    if (!song?.video_id) return false;
+    if (existingIds.has(song.video_id)) return false;
+    if (isBadAutoQueueResult(song)) return false;
+
+    const normalizedTitle = normalizeSongTitle(song.title);
+
+    if (!normalizedTitle) return false;
+    if (existingTitles.has(normalizedTitle)) return false;
+    if (seenAutoTitles.has(normalizedTitle)) return false;
+
+    seenAutoTitles.add(normalizedTitle);
+    return true;
+  })
+  .slice(0, 1);
 
     if (!toAdd.length) return;
 
