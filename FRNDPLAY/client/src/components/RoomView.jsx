@@ -2,6 +2,7 @@ import { searchYouTubeSongs } from "../lib/youtube";
 import AutoQueueControls from "./AutoQueueControls";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabase";
+import { findAutoQueueSong } from "../lib/autoQueue";
 import { QRCodeCanvas } from "qrcode.react";
 import { usePostHog } from "posthog-js/react";
 import YouTube from "react-youtube";
@@ -262,8 +263,7 @@ function normalizeQueuePositions(items) {
     position: index + 1,
   }));
 }
-function buildAutoQueueQuery({ currentTitle, songMemory = [] }) {
-  function isBadAutoQueueResult(song) {
+function isBadAutoQueueResult(song) {
   const title = String(song?.title || "").toLowerCase();
 
   const blockedTerms = [
@@ -288,10 +288,16 @@ function buildAutoQueueQuery({ currentTitle, songMemory = [] }) {
     "party mix",
     "dance mix",
     "club mix",
+    "slowed",
+    "reverb",
+    "nightcore",
+    "sped up",
   ];
 
   return blockedTerms.some((term) => title.includes(term));
 }
+
+function buildAutoQueueQuery({ currentTitle, songMemory = [] }) {
   const cleanTitle = (title) =>
     String(title || "")
       .replace(/\(official.*?\)/gi, "")
@@ -333,7 +339,8 @@ export default function RoomView({ displayName = "" }) {
   }, []);
 
   const sessionId = useMemo(() => getSessionId(), []);
-  
+   const recentlyPlayedRef = useRef([]);
+  const autoQueueRunningRef = useRef(false);
 const endRoom = async () => {
   try {
     if (!isHost || !roomRef.current?.id) return;
@@ -438,8 +445,7 @@ const currentQueueIndexRef = useRef(-1);
   if (queue.length >= 2) return;
   autoFillQueue();
 }, [isHost, autoQueueEnabled, queue.length, currentTitle]);async function autoFillQueue() {
-  if (!isHost || !room?.id || isAutoQueuing) return;
-
+if (!isHost || !roomRef.current?.id || isAutoQueuing) return;
   setIsAutoQueuing(true);
 
   try {
@@ -471,19 +477,22 @@ const currentQueueIndexRef = useRef(-1);
 
     if (!toAdd.length) return;
 
-    const startPos =
-      Math.max(0, ...queue.map((q) => Number(q.position || 0))) + 1;
+  const latestQueue = queueRef.current || [];
 
-    const rows = toAdd.map((song, i) => ({
-      room_id: room.id,
-      video_id: song.video_id,
-      title: song.title || "Untitled",
-      added_by: authUserId || sessionId,
-      added_by_name: displayName || authUserEmail || "Auto Queue",
-      position: startPos + i,
-      votes: 0,
-      source: "auto_queue",
-    }));
+const startPos =
+  Math.max(0, ...latestQueue.map((q) => Number(q.position || 0))) + 1;
+
+  const rows = toAdd.map((song, i) => ({
+  room_id: roomRef.current.id,
+  video_id: song.video_id,
+  title: song.title || "Untitled",
+  thumbnail_url: song.thumbnail_url || song.thumbnail || getYouTubeThumb(song.video_id),
+  added_by: authUserId || sessionId,
+  added_by_name: displayName || authUserEmail || "Auto Queue",
+  position: startPos + i,
+  votes: 0,
+  source: "auto_queue",
+}));
 
     const { error } = await supabase.from("room_queue").insert(rows);
     if (error) throw error;
@@ -1092,31 +1101,13 @@ const playNextSong = useCallback(async () => {
       nextSong = currentQueue[0];
       shouldRemoveFromQueue = true;
     } else if (autoQueueEnabled) {
-  const recommendationQuery = buildAutoQueueQuery({
-    currentTitle: currentRoom?.current_title || "",
-    songMemory: songMemoryRef.current || [],
-  });
+  await autoFillQueue();
 
-  const results = await searchYouTubeSongs(recommendationQuery, 8);
+  const refreshedQueue = await refreshQueueNow();
 
-  const existingIds = new Set([
-    currentRoom?.current_video_id,
-    ...(songMemoryRef.current || []).map((song) => song.video_id),
-  ]);
-
-  const generatedSong = results.find(
-  (song) =>
-    song?.video_id &&
-    !existingIds.has(song.video_id) &&
-    !isBadAutoQueueResult(song)
-);
-
-  if (generatedSong?.video_id) {
-    nextSong = {
-      video_id: generatedSong.video_id,
-      title: generatedSong.title || "Untitled",
-      source: "auto_queue",
-    };
+  if (refreshedQueue.length > 0) {
+    nextSong = refreshedQueue[0];
+    shouldRemoveFromQueue = true;
   }
 }
 

@@ -1,48 +1,123 @@
-import { searchYouTubeSongs } from "./youtube";
-import {
-  getNextQueuePosition,
-  removeDuplicateSongsByVideoId,
-} from "./queueHelpers";
+const BAD_TITLE_WORDS = [
+  "mix",
+  "playlist",
+  "full album",
+  "album",
+  "dj set",
+  "live set",
+  "hour",
+  "hours",
+  "compilation",
+  "nightcore",
+  "slowed",
+  "reverb",
+  "sped up",
+  "instrumental",
+  "karaoke",
+  "reaction",
+  "lyrics",
+  "lyric video",
+];
 
-export async function generateAutoQueueRows({
-  room,
-  queue,
-  user,
-  maxSearchResults = 8,
-  maxSongsToAdd = 3,
+function isBadAutoQueueResult(video) {
+  const title = video?.snippet?.title?.toLowerCase() || "";
+  const channel = video?.snippet?.channelTitle?.toLowerCase() || "";
+
+  if (!video?.id?.videoId) return true;
+
+  if (BAD_TITLE_WORDS.some((word) => title.includes(word))) {
+    return true;
+  }
+
+  if (channel.includes("topic")) {
+    return false;
+  }
+
+  return false;
+}
+
+function cleanSongTitle(title = "") {
+  return title
+    .replace(/\(official music video\)/gi, "")
+    .replace(/\[official music video\]/gi, "")
+    .replace(/\(official audio\)/gi, "")
+    .replace(/\[official audio\]/gi, "")
+    .replace(/\(audio\)/gi, "")
+    .replace(/\[audio\]/gi, "")
+    .replace(/\(visualizer\)/gi, "")
+    .replace(/\[visualizer\]/gi, "")
+    .replace(/\(lyrics\)/gi, "")
+    .replace(/\[lyrics\]/gi, "")
+    .replace(/official/gi, "")
+    .trim();
+}
+
+export async function findAutoQueueSong({
+  seedSong,
+  currentQueue = [],
+  recentlyPlayed = [],
 }) {
-  if (!room?.id) {
-    console.error("generateAutoQueueRows missing room.id");
-    return [];
+  const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
+
+  if (!apiKey) {
+    console.error("Missing VITE_YOUTUBE_API_KEY");
+    return null;
   }
 
-  const vibe = room?.auto_queue_vibe || "rap";
-  const searchQuery = `${vibe} music popular songs`;
-
-  const results = await searchYouTubeSongs(searchQuery, maxSearchResults);
-
-  if (!results.length) {
-    return [];
+  if (!seedSong?.title) {
+    console.warn("No seed song available for auto queue");
+    return null;
   }
 
-  const filteredSongs = removeDuplicateSongsByVideoId(results, queue).slice(
-    0,
-    maxSongsToAdd
-  );
+  const blockedVideoIds = new Set([
+    ...currentQueue.map((song) => song.video_id || song.videoId),
+    ...recentlyPlayed.map((song) => song.video_id || song.videoId),
+  ]);
 
-  if (!filteredSongs.length) {
-    return [];
+  const cleanedTitle = cleanSongTitle(seedSong.title);
+
+  const query = `${cleanedTitle} similar songs`;
+
+  const url =
+    "https://www.googleapis.com/youtube/v3/search" +
+    `?part=snippet` +
+    `&type=video` +
+    `&videoCategoryId=10` +
+    `&maxResults=10` +
+    `&q=${encodeURIComponent(query)}` +
+    `&key=${apiKey}`;
+
+  const res = await fetch(url);
+  const data = await res.json();
+
+  if (!res.ok) {
+    console.error("YouTube auto queue search failed:", data);
+    return null;
   }
 
-  const startingPosition = getNextQueuePosition(queue);
+  const candidates = data.items || [];
 
-  return filteredSongs.map((song, index) => ({
-    room_id: room.id,
-    video_id: song.video_id,
-    title: song.title,
-    thumbnail_url: song.thumbnail_url,
-    position: startingPosition + index,
-    added_by: user?.id || null,
-    source: "auto_queue",
-  }));
+  const selected = candidates.find((video) => {
+    const videoId = video?.id?.videoId;
+
+    if (!videoId) return false;
+    if (blockedVideoIds.has(videoId)) return false;
+    if (isBadAutoQueueResult(video)) return false;
+
+    return true;
+  });
+
+  if (!selected) {
+    console.warn("No valid auto queue result found");
+    return null;
+  }
+
+  return {
+    video_id: selected.id.videoId,
+    title: selected.snippet.title,
+    thumbnail_url:
+      selected.snippet.thumbnails?.medium?.url ||
+      selected.snippet.thumbnails?.default?.url ||
+      "",
+  };
 }
