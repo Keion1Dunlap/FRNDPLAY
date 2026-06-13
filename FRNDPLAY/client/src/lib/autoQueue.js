@@ -15,6 +15,16 @@ const BAD_TITLE_WORDS = [
   "instrumental",
   "karaoke",
   "reaction",
+  "reacts",
+  "reacting",
+  "mashup",
+  "megamix",
+  "remix",
+  "shorts",
+  "#shorts",
+  "sample",
+  "craziest sample",
+  "all time",
   "lyrics",
   "lyric video",
 ];
@@ -93,7 +103,7 @@ const blockedTitles = new Set([
     `?part=snippet` +
     `&type=video` +
     `&videoCategoryId=10` +
-    `&maxResults=10` +
+    `&maxResults=20` +
     `&q=${encodeURIComponent(query)}` +
     `&key=${apiKey}`;
 
