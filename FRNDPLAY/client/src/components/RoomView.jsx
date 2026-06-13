@@ -284,94 +284,9 @@ function normalizeSongTitle(title = "") {
     .replace(/\s+/g, " ")
     .trim();
 }
-function isBadAutoQueueResult(song) {
-  const title = String(song?.title || "").toLowerCase();
-  const channel = String(song?.channel_title || song?.channelTitle || "").toLowerCase();
 
-  const blockedTerms = [
-    "mix",
-    "dj mix",
-    "playlist",
-    "top songs",
-    "best songs",
-    "party songs",
-    "dance songs",
-    "songs that make you dance",
-    "mashup",
-    "megamix",
-    "compilation",
-    "full album",
-    "album mix",
-    "hour",
-    "1 hour",
-    "2 hour",
-    "nonstop",
-    "live set",
-    "radio edit",
-    "clean mix",
-    "party mix",
-    "dance mix",
-    "club mix",
-    "slowed",
-    "reverb",
-    "nightcore",
-    "sped up",
-    "lyrics",
-    "lyric video",
-    "official lyric",
-    "visualizer",
-    "2024",
-    "2025",
-    "2026",
-  ];
 
-  const blockedChannels = [
-    "mix",
-    "playlist",
-    "hits",
-    "party",
-    "top songs",
-  ];
 
-  if (blockedTerms.some((term) => title.includes(term))) return true;
-  if (blockedChannels.some((term) => channel.includes(term))) return true;
-
-  return false;
-}
-
-function buildAutoQueueQuery({ currentTitle, songMemory = [] }) {
-  const cleanTitle = (title) =>
-    String(title || "")
-      .replace(/\(official.*?\)/gi, "")
-      .replace(/\[official.*?\]/gi, "")
-      .replace(/\blyrics?\b/gi, "")
-      .replace(/\bvideo\b/gi, "")
-      .replace(/\baudio\b/gi, "")
-      .replace(/\bvisualizer\b/gi, "")
-      .replace(/\bremastered\b/gi, "")
-      .replace(/\bexplicit\b/gi, "")
-      .replace(/\bclean\b/gi, "")
-      .replace(/\s+/g, " ")
-      .trim();
-
-  const memoryTitles = (songMemory || [])
-    .map((song) => cleanTitle(song?.title))
-    .filter(Boolean);
-
-  const baseTitle = cleanTitle(currentTitle);
-
-  const seeds = [...memoryTitles, baseTitle]
-    .filter(Boolean)
-    .filter((title, index, arr) => arr.indexOf(title) === index);
-
-  if (seeds.length === 0) {
-    return "";
-  }
-
-  const latestSeed = seeds[seeds.length - 1];
-
-  return `${latestSeed} similar artist song`;
-}
 export default function RoomView({ displayName = "" }) {
   const posthog = usePostHog();
   const roomCode = useMemo(() => {
@@ -485,90 +400,67 @@ const currentQueueIndexRef = useRef(-1);
   if (isAutoQueuing) return;
   if (queue.length >= 2) return;
   autoFillQueue();
-}, [isHost, autoQueueEnabled, queue.length, currentTitle]);async function autoFillQueue() {
-if (!isHost || !roomRef.current?.id || isAutoQueuing) return;
+}, [isHost, autoQueueEnabled, queue.length, currentTitle]);
+async function autoFillQueue() {
+  if (!isHost || !roomRef.current?.id || autoQueueRunningRef.current) return;
+
+  autoQueueRunningRef.current = true;
   setIsAutoQueuing(true);
 
   try {
     const currentRoom = roomRef.current;
 
-    const recommendationQuery = buildAutoQueueQuery({
-  currentTitle: currentRoom?.current_title || "",
-  songMemory: songMemoryRef.current || [],
-});
+    const seedSong =
+      currentRoom?.current_title
+        ? {
+            video_id: currentRoom.current_video_id,
+            title: currentRoom.current_title,
+          }
+        : songMemoryRef.current?.[songMemoryRef.current.length - 1] ||
+          queueRef.current?.[0];
 
-if (!recommendationQuery) {
-  console.warn("Auto Queue skipped: no song history yet.");
-  return;
-}
+    if (!seedSong?.title) {
+      console.warn("Auto Queue skipped: no seed song.");
+      return;
+    }
 
-const results = await searchYouTubeSongs(recommendationQuery, 8);
+    const nextSong = await findAutoQueueSong({
+      seedSong,
+      currentQueue: queueRef.current || [],
+      recentlyPlayed: songMemoryRef.current || [],
+    });
 
-    const results = await searchYouTubeSongs(recommendationQuery, 8);
+    if (!nextSong?.video_id) {
+      console.warn("Auto Queue found no valid related song.");
+      return;
+    }
 
-    if (!results.length) return;
+    const latestQueue = queueRef.current || [];
 
-    const existingIds = new Set([
-      ...queue.map((q) => q.video_id),
-      currentRoom?.current_video_id,
-      ...(songMemoryRef.current || []).map((song) => song.video_id),
-    ]);
+    const startPos =
+      Math.max(0, ...latestQueue.map((q) => Number(q.position || 0))) + 1;
 
-    const existingTitles = new Set([
-  ...queueRef.current.map((q) => normalizeSongTitle(q.title)),
-  currentRoom?.current_title
-    ? normalizeSongTitle(currentRoom.current_title)
-    : "",
-  ...(songMemoryRef.current || []).map((song) =>
-    normalizeSongTitle(song.title)
-  ),
-].filter(Boolean));
+    const row = {
+      room_id: roomRef.current.id,
+      video_id: nextSong.video_id,
+      title: nextSong.title || "Untitled",
+      thumbnail_url:
+        nextSong.thumbnail_url || getYouTubeThumb(nextSong.video_id),
+      added_by: authUserId || sessionId,
+      added_by_name: "Auto Queue",
+      position: startPos,
+      votes: 0,
+      source: "auto_queue",
+    };
 
-const seenAutoTitles = new Set();
-
-const toAdd = results
-  .filter((song) => {
-    if (!song?.video_id) return false;
-    if (existingIds.has(song.video_id)) return false;
-    if (isBadAutoQueueResult(song)) return false;
-
-    const normalizedTitle = normalizeSongTitle(song.title);
-
-    if (!normalizedTitle) return false;
-    if (existingTitles.has(normalizedTitle)) return false;
-    if (seenAutoTitles.has(normalizedTitle)) return false;
-
-    seenAutoTitles.add(normalizedTitle);
-    return true;
-  })
-  .slice(0, 1);
-
-    if (!toAdd.length) return;
-
-  const latestQueue = queueRef.current || [];
-
-const startPos =
-  Math.max(0, ...latestQueue.map((q) => Number(q.position || 0))) + 1;
-
-  const rows = toAdd.map((song, i) => ({
-  room_id: roomRef.current.id,
-  video_id: song.video_id,
-  title: song.title || "Untitled",
-  thumbnail_url: song.thumbnail_url || song.thumbnail || getYouTubeThumb(song.video_id),
-  added_by: authUserId || sessionId,
-  added_by_name: displayName || authUserEmail || "Auto Queue",
-  position: startPos + i,
-  votes: 0,
-  source: "auto_queue",
-}));
-
-    const { error } = await supabase.from("room_queue").insert(rows);
+    const { error } = await supabase.from("room_queue").insert([row]);
     if (error) throw error;
 
     await refreshQueueNow();
   } catch (err) {
     console.error("autoFillQueue error:", err);
   } finally {
+    autoQueueRunningRef.current = false;
     setIsAutoQueuing(false);
   }
 }
@@ -1987,6 +1879,12 @@ return (
         <div className="room-left" style={styles.leftColumn}>
           <div style={styles.headerBlock}>
             <div style={styles.roomTitleRow}>
+              <button
+  style={styles.homeButton}
+  onClick={() => window.location.assign("/")}
+>
+  ← Home
+</button>
   <h1 className="room-title" style={styles.roomTitle}>
     Room: {roomCode}
   </h1>
@@ -2436,6 +2334,16 @@ const styles = {
     flexDirection: "column",
     width: "100%",
   },
+  homeButton: {
+  border: "1px solid rgba(255,255,255,0.18)",
+  borderRadius: "999px",
+  padding: "10px 14px",
+  fontWeight: 900,
+  fontSize: "0.9rem",
+  cursor: "pointer",
+  background: "rgba(255,255,255,0.12)",
+  color: "white",
+},
 
   headerBlock: {
     color: "white",
