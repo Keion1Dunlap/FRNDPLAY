@@ -1020,7 +1020,14 @@ await updateRoomPlaybackState({
   host_session_id: sessionId,
   ...(authUserId ? { host_user_id: authUserId } : {}),
 });
+if (item.id) {
+  await supabase
+    .from("room_queue")
+    .delete()
+    .eq("id", item.id);
 
+  await refreshQueueNow();
+}
 
     } catch (err) {
       console.error("playQueueItemNow error:", err);
@@ -1057,16 +1064,26 @@ const playNextSong = useCallback(async () => {
     let nextSong = null;
     let shouldRemoveFromQueue = false;
 
-    if (currentQueue.length > 0) {
-      nextSong = currentQueue[0];
-      shouldRemoveFromQueue = true;
-    } else if (autoQueueEnabled) {
+    const currentVideoId = currentRoom?.current_video_id || "";
+
+const playableQueue = currentQueue.filter(
+  (song) => song.video_id !== currentVideoId
+);
+
+if (playableQueue.length > 0) {
+  nextSong = playableQueue[0];
+  shouldRemoveFromQueue = true;
+} else if (autoQueueEnabled) {
   await autoFillQueue();
 
   const refreshedQueue = await refreshQueueNow();
 
-  if (refreshedQueue.length > 0) {
-    nextSong = refreshedQueue[0];
+  const filteredRefreshedQueue = refreshedQueue.filter(
+    (song) => song.video_id !== currentVideoId
+  );
+
+  if (filteredRefreshedQueue.length > 0) {
+    nextSong = filteredRefreshedQueue[0];
     shouldRemoveFromQueue = true;
   }
 }
