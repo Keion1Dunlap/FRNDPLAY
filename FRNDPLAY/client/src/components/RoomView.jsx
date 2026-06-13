@@ -439,7 +439,26 @@ async function autoFillQueue() {
 
     const startPos =
       Math.max(0, ...latestQueue.map((q) => Number(q.position || 0))) + 1;
+    const normalizedNextTitle = normalizeSongTitle(nextSong.title);
 
+const duplicateTitleExists = [
+  ...latestQueue,
+  ...(songMemoryRef.current || []),
+  {
+    video_id: currentRoom?.current_video_id,
+    title: currentRoom?.current_title,
+  },
+].some((song) => {
+  return (
+    song?.video_id === nextSong.video_id ||
+    normalizeSongTitle(song?.title) === normalizedNextTitle
+  );
+});
+
+if (duplicateTitleExists) {
+  console.warn("Auto Queue skipped duplicate:", nextSong.title);
+  return;
+}
     const row = {
       room_id: roomRef.current.id,
       video_id: nextSong.video_id,
@@ -457,6 +476,12 @@ async function autoFillQueue() {
     if (error) throw error;
 
     await refreshQueueNow();
+    const wasQueueEmpty = latestQueue.length === 0;
+const nothingPlaying = !currentRoom?.current_video_id;
+
+if (wasQueueEmpty && nothingPlaying && nextSong?.video_id) {
+  await playNextSong();
+}
   } catch (err) {
     console.error("autoFillQueue error:", err);
   } finally {
@@ -1680,6 +1705,7 @@ const handleHostPlay = useCallback(async () => {
   playQueueItemNow,
   sessionId,
   updateRoomPlaybackState,
+  autoFillQueue,
 ]);
 const playPreviousSong = useCallback(async () => {
   if (!isHost || advancingRef.current) return;
