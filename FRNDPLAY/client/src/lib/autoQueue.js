@@ -70,9 +70,19 @@ export async function findAutoQueueSong({
   }
 
   const blockedVideoIds = new Set([
-    ...currentQueue.map((song) => song.video_id || song.videoId),
-    ...recentlyPlayed.map((song) => song.video_id || song.videoId),
-  ]);
+  seedSong.video_id || seedSong.videoId,
+  ...currentQueue.map((song) => song.video_id || song.videoId),
+  ...recentlyPlayed.map((song) => song.video_id || song.videoId),
+].filter(Boolean));
+
+const blockedTitles = new Set([
+  seedSong.title,
+  ...currentQueue.map((song) => song.title),
+  ...recentlyPlayed.map((song) => song.title),
+]
+  .filter(Boolean)
+  .map(cleanSongTitle)
+  .map((title) => title.toLowerCase()));
 
   const cleanedTitle = cleanSongTitle(seedSong.title);
 
@@ -104,6 +114,11 @@ export async function findAutoQueueSong({
     if (blockedVideoIds.has(videoId)) return false;
     if (isBadAutoQueueResult(video)) return false;
 
+    const cleanCandidateTitle = cleanSongTitle(
+  video?.snippet?.title || ""
+).toLowerCase();
+
+if (blockedTitles.has(cleanCandidateTitle)) return false;
     return true;
   });
 

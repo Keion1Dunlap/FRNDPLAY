@@ -100,9 +100,18 @@ if (room) {
           <p style={styles.topSubText}>Real-time collaborative music rooms</p>
         </div>
 
-        <button style={styles.signOutButton} onClick={handleSignOut}>
-          Sign out
-        </button>
+        <div style={styles.topButtons}>
+  <button
+    style={styles.homeButton}
+    onClick={() => window.location.assign("/")}
+  >
+    ← Home
+  </button>
+
+  <button style={styles.signOutButton} onClick={handleSignOut}>
+    Sign out
+  </button>
+</div>
       </div>
 
       <main style={styles.heroWrap}>
@@ -205,6 +214,23 @@ const styles = {
     opacity: 0.9,
     fontWeight: 700,
   },
+  topButtons: {
+  display: "flex",
+  gap: "10px",
+  alignItems: "center",
+  flexWrap: "wrap",
+},
+
+homeButton: {
+  border: "1px solid rgba(255,255,255,0.25)",
+  borderRadius: "14px",
+  padding: "12px 18px",
+  fontWeight: 900,
+  fontSize: "0.95rem",
+  cursor: "pointer",
+  background: "rgba(255,255,255,0.12)",
+  color: "white",
+},
 
   signOutButton: {
     border: "none",
