@@ -1,6 +1,7 @@
 // client/src/components/JoinRoom.jsx
 import { useState } from "react";
 import { supabase } from "../supabase";
+import posthog from "../posthog";
 
 export default function JoinRoom({ user, setRoom, displayName }) {  const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -60,6 +61,10 @@ if (!room?.id) throw new Error("Room not found.");
       url.searchParams.delete("checkout");
       window.history.replaceState({}, "", url.toString());
 
+      posthog?.capture("room_joined", {
+        room_code: trimmed,
+      });
+      posthog?.logger.info("room joined");
       setRoom(room);
     } catch (e) {
       setErrorMsg(String(e?.message ?? e));

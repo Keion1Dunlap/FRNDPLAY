@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../supabase";
+import posthog from "../posthog";
 
 export default function Auth({ setUser }) {
   const [loading, setLoading] = useState(true);
@@ -68,7 +69,10 @@ export default function Auth({ setUser }) {
 
     if (error) {
       console.error("Google login error:", error.message);
+      return;
     }
+
+    posthog?.capture("sign_in_started");
   };
 
   if (loading) return null;

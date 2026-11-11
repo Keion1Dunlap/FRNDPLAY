@@ -4,7 +4,32 @@ import Auth from "./components/Auth";
 import CreateRoom from "./components/CreateRoom";
 import JoinRoom from "./components/JoinRoom";
 import RoomView from "./components/RoomView";
+import posthog from "./posthog";
 import "./App.css";
+
+let identifiedUserId = null;
+
+function identifyUser(user) {
+  if (!user?.id || identifiedUserId === user.id) return;
+
+  if (identifiedUserId && identifiedUserId !== user.id) {
+    posthog?.reset();
+  }
+
+  const personProperties = {};
+  const name = user.user_metadata?.full_name || user.user_metadata?.name;
+
+  if (user.email) personProperties.email = user.email;
+  if (name) personProperties.name = name;
+
+  posthog?.identify(user.id, personProperties);
+  identifiedUserId = user.id;
+}
+
+function resetIdentifiedUser() {
+  posthog?.reset();
+  identifiedUserId = null;
+}
 
 export default function FRNDPLAYApp() {const [session, setSession] = useState(null);
 const [displayName, setDisplayName] = useState("");
@@ -27,6 +52,7 @@ const [loading, setLoading] = useState(true);
       if (!mounted) return;
 
       setSession(session || null);
+      identifyUser(session?.user);
       setLoading(false);
     }
 
@@ -34,8 +60,14 @@ const [loading, setLoading] = useState(true);
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session || null);
+
+      if (event === "SIGNED_OUT") {
+        resetIdentifiedUser();
+      } else if (event === "SIGNED_IN") {
+        identifyUser(session?.user);
+      }
     });
 
     return () => {
