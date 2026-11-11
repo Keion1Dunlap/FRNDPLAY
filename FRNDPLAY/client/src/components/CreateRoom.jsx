@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { supabase } from "../supabase";
+import posthog from "../posthog";
 
 function makeCode(len = 6) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -56,7 +57,12 @@ export default function CreateRoom() {
 
       if (!created) throw lastErr || new Error("Could not create room.");
 
-window.location.href = `/app?room=${created.code}`;    } catch (e) {
+      posthog?.capture("room_created", {
+        room_code: created.code,
+      });
+      posthog?.logger.info("room created");
+      window.location.href = `/app?room=${created.code}`;
+    } catch (e) {
       console.error("Create room error:", e);
       setError(String(e?.message ?? e));
     } finally {

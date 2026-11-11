@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabase";
 import { findAutoQueueSong } from "../lib/autoQueue";
 import { QRCodeCanvas } from "qrcode.react";
-import { usePostHog } from "posthog-js/react";
+import posthog from "../posthog";
 import YouTube from "react-youtube";
 import {
   savePlayedSong,
@@ -288,7 +288,6 @@ function normalizeSongTitle(title = "") {
 
 
 export default function RoomView({ displayName = "" }) {
-  const posthog = usePostHog();
   const roomCode = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     return (params.get("room") || "").trim().toUpperCase();
@@ -309,20 +308,23 @@ const endRoom = async () => {
       .delete()
       .eq("room_id", roomRef.current.id);
 
-    await supabase
-  .from("rooms")
-  .update({
-    ended: true,
-    current_video_id: "",
-    current_title: "",
-    is_playing: false,
-    playback_time: 0,
-    last_sync_at: new Date().toISOString(),
-  })
-  .eq("id", roomRef.current.id);
-posthog.capture("room_ended", {
-  room_code: roomCode,
-});
+    const { error: endRoomError } = await supabase
+      .from("rooms")
+      .update({
+        ended: true,
+        current_video_id: "",
+        current_title: "",
+        is_playing: false,
+        playback_time: 0,
+        last_sync_at: new Date().toISOString(),
+      })
+      .eq("id", roomRef.current.id);
+
+    if (endRoomError) throw endRoomError;
+
+    posthog?.capture("room_ended", {
+      room_code: roomCode,
+    });
     window.location.assign("/app");
   } catch (err) {
     console.error("endRoom error:", err);
@@ -492,8 +494,22 @@ if (wasQueueEmpty && nothingPlaying && nextSong?.video_id) {
 
 async function updateAutoQueueSetting(enabled) {
   if (!isHost || !room?.id) return;
+
+  const { error } = await supabase
+    .from("rooms")
+    .update({ auto_queue_enabled: enabled })
+    .eq("id", room.id);
+
+  if (error) {
+    console.error("updateAutoQueueSetting error:", error);
+    return;
+  }
+
   setAutoQueueEnabled(enabled);
-  await supabase.from("rooms").update({ auto_queue_enabled: enabled }).eq("id", room.id);
+  posthog?.capture("auto_queue_toggled", {
+    room_code: roomCode,
+    enabled,
+  });
 }
 
 async function updateAutoQueueVibe(vibe) {
@@ -590,11 +606,14 @@ useEffect(() => {
   const copyRoomLink = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(window.location.href);
+      posthog?.capture("room_link_copied", {
+        room_code: roomCode,
+      });
       alert("Room link copied!");
     } catch {
       alert("Could not copy link. Copy it manually.");
     }
-  }, []);
+  }, [roomCode]);
 const leaveRoom = () => {
 window.location.assign("/app");
 };
@@ -617,7 +636,7 @@ const toggleSafeMode = async () => {
   setRoom((prev) =>
     prev ? { ...prev, safe_mode: nextValue } : prev
   );
-  posthog.capture("safe_mode_toggled", {
+  posthog?.capture("safe_mode_toggled", {
   room_code: roomCode,
   enabled: nextValue,
 });
@@ -752,10 +771,6 @@ roomRef.current = data;
 setPlayerVideoId(data.current_video_id || "");
 setAutoQueueEnabled(Boolean(data.auto_queue_enabled));
 setAutoQueueVibe(data.auto_queue_vibe || "rap");
-
-posthog.capture("room_joined", {
-  room_code: roomCode,
-});
 
       const queueData = await fetchQueue();
       setQueue(queueData);
@@ -1045,6 +1060,10 @@ await updateRoomPlaybackState({
   host_session_id: sessionId,
   ...(authUserId ? { host_user_id: authUserId } : {}),
 });
+posthog?.capture("playback_started", {
+  room_code: roomCode,
+  source: "queue_item",
+});
 if (item.id) {
   await supabase
     .from("room_queue")
@@ -1067,6 +1086,7 @@ if (item.id) {
     isHost,
     refreshQueueNow,
     rememberSong,
+    roomCode,
     sessionId,
     startHostVideoNow,
     updateRoomPlaybackState,
@@ -1215,6 +1235,9 @@ const advanceToNextTrack = useCallback(async () => {
         const normalized = await renumberQueueInDb(filtered);
         setQueue(normalized);
         queueRef.current = normalized;
+        posthog?.capture("queue_item_removed", {
+          room_code: roomCode,
+        });
       } catch (err) {
         console.error("removeQueueItem error:", err);
         alert(err.message || "Failed to remove queue item.");
@@ -1222,7 +1245,7 @@ const advanceToNextTrack = useCallback(async () => {
         setQueueBusyId(null);
       }
     },
-    [isHost, renumberQueueInDb]
+    [isHost, renumberQueueInDb, roomCode]
   );
 const clearQueue = useCallback(async () => {
   if (!isHost || !roomRef.current?.id) return;
@@ -1242,14 +1265,14 @@ const clearQueue = useCallback(async () => {
     queueRef.current = [];
 
     await refreshQueueNow();
-    posthog.capture("queue_cleared", {
+    posthog?.capture("queue_cleared", {
   room_code: roomCode,
 });
   } catch (err) {
     console.error("clearQueue error:", err);
     alert("Failed to clear queue.");
   }
-}, [isHost, refreshQueueNow]);
+}, [isHost, refreshQueueNow, roomCode]);
   const moveQueueItem = useCallback(
     async (item, direction) => {
       if (!isHost || !item) return;
@@ -1273,13 +1296,17 @@ const clearQueue = useCallback(async () => {
         const normalized = await renumberQueueInDb(optimistic);
         setQueue(normalized);
         queueRef.current = normalized;
+        posthog?.capture("queue_item_reordered", {
+          room_code: roomCode,
+          direction,
+        });
       } catch (err) {
         console.error("moveQueueItem error:", err);
         alert(err.message || "Failed to move queue item.");
         loadRoom();
       }
     },
-    [isHost, loadRoom, renumberQueueInDb]
+    [isHost, loadRoom, renumberQueueInDb, roomCode]
   );
 
   const upvoteQueueItem = useCallback(
@@ -1331,17 +1358,15 @@ const clearQueue = useCallback(async () => {
       const latest = await fetchQueue();
 setQueue(latest);
 queueRef.current = latest;
-posthog.capture("song_upvoted", {
+posthog?.capture("song_upvoted", {
   room_code: roomCode,
-  song_id: item.id,
-  title: item.title,
 });
     } catch (err) {
       console.error("upvoteQueueItem error:", err);
       alert(err.message || "Failed to upvote.");
     }
   },
-[authUserId, fetchQueue]);
+[authUserId, fetchQueue, roomCode]);
 
   const addVideoToQueue = useCallback(async () => {
   const videoId = extractYouTubeId(videoInput);
@@ -1390,9 +1415,9 @@ posthog.capture("song_upvoted", {
     setSearchQuery("");
     setVideoInput("");
 
-    posthog.capture("song_added", {
+    posthog?.capture("song_added", {
       room_code: roomCode,
-      title: videoTitle,
+      source: "youtube_url",
     });
 
   } catch (err) {
@@ -1406,7 +1431,6 @@ posthog.capture("song_upvoted", {
   sessionId,
   videoInput,
   refreshQueueNow,
-  posthog,
   roomCode,
 ]);
 const handlePlayerReady = useCallback(
@@ -1549,9 +1573,9 @@ const addSearchResultToQueue = useCallback(
       setSearchResults([]);
       setSearchQuery("");
 
-      posthog.capture("song_added", {
+      posthog?.capture("song_added", {
         room_code: roomCode,
-        title,
+        source: "youtube_search",
       });
 
     } catch (err) {
@@ -1565,7 +1589,6 @@ const addSearchResultToQueue = useCallback(
     displayName,
     sessionId,
     refreshQueueNow,
-    posthog,
     roomCode,
   ]
 );
@@ -1949,9 +1972,17 @@ return (
           text: shareText,
           url,
         });
+        posthog?.capture("room_shared", {
+          room_code: roomCode,
+          method: "native_share",
+        });
       } catch {}
     } else {
       await navigator.clipboard.writeText(shareText);
+      posthog?.capture("room_shared", {
+        room_code: roomCode,
+        method: "clipboard",
+      });
       alert("Invite link copied!");
     }
   }}
